@@ -3,13 +3,13 @@
 # NCS Australia - Mise Development Environment Setup Script
 #
 # Author: Emile Hofsink
-# Version: 1.1.1
+# Version: 1.1.2
 #
 # This script automates the complete installation and configuration of 'mise'
 # according to the NCS Australia standard development environment.
 #
 # It performs the following actions:
-# 1.  Checks for and downloads the latest version of itself.
+# 1.  Checks for and downloads the latest version of itself, handling Zscaler certs if they exist.
 # 2.  Checks for dependencies (gum, curl, git) and offers to install them.
 # 3.  Installs the 'mise' binary using the official installer.
 # 4.  Automatically creates the standard NCS 'config.toml' file.
@@ -24,15 +24,25 @@
 # --- Self-Update Mechanism ---
 # This ensures the user is always running the latest version of the script.
 SCRIPT_URL="https://raw.githubusercontent.com/withriley/engineer-enablement/main/tools/install_mise.sh"
-CURRENT_VERSION="1.1.1" # This must match the version in this header
+CURRENT_VERSION="1.1.2" # This must match the version in this header
 
 self_update() {
     # Use plain echo since gum may not be installed yet.
     echo "Checking for script updates..."
     
-    # Fetch the latest version string from the remote script.
+    # Define the path to our custom CA bundle and build the curl options array.
+    local ca_bundle="$HOME/certs/ncs_golden_bundle.pem"
+    local curl_opts=("-sSL")
+
+    # If the custom CA bundle from our zscaler.sh script exists, tell curl to use it.
+    # This solves the chicken-and-egg problem of needing certs to check for updates.
+    if [ -f "$ca_bundle" ]; then
+        curl_opts+=("--cacert" "$ca_bundle")
+    fi
+
+    # Fetch the latest version string from the remote script using our cert-aware options.
     # The timestamp is a cache-busting mechanism.
-    LATEST_VERSION=$(curl -sSL "${SCRIPT_URL}?_=$(date +%s)" | grep -m 1 "Version:" | awk '{print $3}')
+    LATEST_VERSION=$(curl "${curl_opts[@]}" "${SCRIPT_URL}?_=$(date +%s)" | grep -m 1 "Version:" | awk '{print $3}')
 
     if [ -z "$LATEST_VERSION" ]; then
         echo "Warning: Could not check for script updates. Proceeding with the current version."
@@ -44,15 +54,14 @@ self_update() {
         echo "A new version ($LATEST_VERSION) is available. The script will now update and re-launch."
         
         # The script needs to know its own location to overwrite itself.
-        # This requires it to be run from a file, not a pipe.
         local script_path="$0"
         if [ -z "$script_path" ] || [[ ! -f "$script_path" ]]; then
             echo "Error: Cannot self-update when run from a pipe. Please use the recommended one-liner."
             exit 1
         fi
 
-        # Download the new script to a temporary location.
-        if curl -sSL "${SCRIPT_URL}?_=$(date +%s)" -o "$script_path.tmp"; then
+        # Download the new script to a temporary location, using the same cert-aware curl command.
+        if curl "${curl_opts[@]}" "${SCRIPT_URL}?_=$(date +%s)" -o "$script_path.tmp"; then
             # Replace the old script with the new one.
             mv "$script_path.tmp" "$script_path"
             # Make sure the new script is executable.
