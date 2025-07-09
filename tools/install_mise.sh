@@ -3,7 +3,7 @@
 # NCS Australia - Mise Development Environment Setup Script
 #
 # Author: Emile Hofsink
-# Version: 1.0.0
+# Version: 1.0.1
 #
 # This script automates the complete installation and configuration of 'mise'
 # according to the NCS Australia standard development environment.
@@ -18,6 +18,7 @@
 #
 # Usage:
 #   ./install_mise.sh
+#   Or via one-liner: curl -sSL <url_to_script> | zsh
 #
 
 # --- 1. Dependency Check & Installation ---
@@ -36,13 +37,14 @@ check_dependencies() {
     if ! command -v gum &> /dev/null; then
         echo "--- Dependency Check ---"
         echo "This script uses 'gum' for a better user experience, but it's not installed."
+        # The '< /dev/tty' is crucial for ensuring this prompt works when run via a pipe (e.g. curl | zsh)
         printf "Would you like to attempt to install it via Homebrew (macOS) or Go? [y/N] "
-        read -r response
+        read -r response < /dev/tty
         if [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
             if command -v brew &> /dev/null; then
                 echo "--> Found Homebrew. Attempting to install 'gum'..."
                 brew install gum
-            elif command -v go &> /dev/null; then
+            elif command -v go &> /dev/null;
                 echo "--> Found Go. Attempting to install 'gum'..."
                 go install github.com/charmbracelet/gum@latest
             else
@@ -55,7 +57,7 @@ check_dependencies() {
                 print_error "'gum' installation failed. Please check the output above."
                 exit 1
             else
-                echo "✔ 'gum' installed successfully. Please re-run this script to continue."
+                echo "✔ 'gum' installed successfully. Please re-run the script to continue."
                 exit 0
             fi
         else
@@ -241,21 +243,25 @@ EOF
     local shell_profile
     local activation_cmd
 
-    if [ -n "$ZSH_VERSION" ]; then
+    # We must check the shell by inspecting the parent process, as $ZSH_VERSION etc. aren't set in a `sh` subshell.
+    local parent_shell
+    parent_shell=$(ps -p $$ -o comm=)
+
+    if [[ "$parent_shell" == "zsh" ]]; then
         shell_type="zsh"
         shell_profile="$HOME/.zshrc"
         activation_cmd='eval "$(mise activate zsh)"'
-    elif [ -n "$BASH_VERSION" ]; then
+    elif [[ "$parent_shell" == "bash" ]]; then
         shell_type="bash"
         shell_profile="$HOME/.bash_profile"
         [ ! -f "$shell_profile" ] && shell_profile="$HOME/.bashrc"
         activation_cmd='eval "$(mise activate bash)"'
-    elif [ -n "$FISH_VERSION" ]; then
+    elif [[ "$parent_shell" == "fish" ]]; then
         shell_type="fish"
         shell_profile="$HOME/.config/fish/config.fish"
         activation_cmd='mise activate fish | source'
     else
-        print_error "Could not automatically detect your shell."
+        print_error "Could not automatically detect your shell ($parent_shell)."
         gum style "Please add the appropriate activation command for your shell to its startup file."
         exit 1
     fi
@@ -263,7 +269,8 @@ EOF
     gum style "Your detected shell is $(gum style --bold "$shell_type"). The required activation command is:"
     gum style "$activation_cmd" --padding "0 2" --border rounded --border-foreground "#90E0EF"
 
-    if gum confirm "Append this command to '$shell_profile'?"; then
+    # Use < /dev/tty to ensure gum can read from the terminal even when piped
+    if gum confirm "Append this command to '$shell_profile'?" < /dev/tty; then
         # Create a backup before modifying
         cp "$shell_profile" "${shell_profile}.bak.$(date +%F-%T)"
         touch "$shell_profile"
