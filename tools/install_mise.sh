@@ -3,28 +3,72 @@
 # NCS Australia - Mise Development Environment Setup Script
 #
 # Author: Emile Hofsink
-# Version: 1.0.3
+# Version: 1.1.1
 #
 # This script automates the complete installation and configuration of 'mise'
 # according to the NCS Australia standard development environment.
 #
 # It performs the following actions:
-# 1.  Checks for dependencies (gum, curl, git) and offers to install them.
-# 2.  Installs the 'mise' binary using the official installer.
-# 3.  Ensures '~/.local/bin' is in the user's PATH.
+# 1.  Checks for and downloads the latest version of itself.
+# 2.  Checks for dependencies (gum, curl, git) and offers to install them.
+# 3.  Installs the 'mise' binary using the official installer.
 # 4.  Automatically creates the standard NCS 'config.toml' file.
-# 5.  Automatically creates the '.env' file with the required Zscaler variables.
+# 5.  Automatically creates a robust '.env' file with the required Zscaler variables.
 # 6.  Guides the user through activating mise in their shell (zsh, bash, or fish).
 #
 # Usage:
-#   ./install_mise.sh
-#   Or via one-liner: curl -sSL "https://raw.githubusercontent.com/withriley/engineer-enablement/main/tools/install_mise.sh?_=$(date +%s)" | zsh
+#   This script is best run via the one-liner, which saves it to a temporary file.
+#   curl -sSL "https://raw.githubusercontent.com/withriley/engineer-enablement/main/tools/install_mise.sh?_=$(date +%s)" -o /tmp/install_mise.sh && zsh /tmp/install_mise.sh
 #
 
+# --- Self-Update Mechanism ---
+# This ensures the user is always running the latest version of the script.
+SCRIPT_URL="https://raw.githubusercontent.com/withriley/engineer-enablement/main/tools/install_mise.sh"
+CURRENT_VERSION="1.1.1" # This must match the version in this header
+
+self_update() {
+    # Use plain echo since gum may not be installed yet.
+    echo "Checking for script updates..."
+    
+    # Fetch the latest version string from the remote script.
+    # The timestamp is a cache-busting mechanism.
+    LATEST_VERSION=$(curl -sSL "${SCRIPT_URL}?_=$(date +%s)" | grep -m 1 "Version:" | awk '{print $3}')
+
+    if [ -z "$LATEST_VERSION" ]; then
+        echo "Warning: Could not check for script updates. Proceeding with the current version."
+        return
+    fi
+
+    # Simple version comparison.
+    if [ "$LATEST_VERSION" != "$CURRENT_VERSION" ]; then
+        echo "A new version ($LATEST_VERSION) is available. The script will now update and re-launch."
+        
+        # The script needs to know its own location to overwrite itself.
+        # This requires it to be run from a file, not a pipe.
+        local script_path="$0"
+        if [ -z "$script_path" ] || [[ ! -f "$script_path" ]]; then
+            echo "Error: Cannot self-update when run from a pipe. Please use the recommended one-liner."
+            exit 1
+        fi
+
+        # Download the new script to a temporary location.
+        if curl -sSL "${SCRIPT_URL}?_=$(date +%s)" -o "$script_path.tmp"; then
+            # Replace the old script with the new one.
+            mv "$script_path.tmp" "$script_path"
+            # Make sure the new script is executable.
+            chmod +x "$script_path"
+            echo "Update complete. Re-executing the script..."
+            # Re-execute the new script, passing along any arguments.
+            exec "$script_path" "$@"
+        else
+            echo "Error: Script update failed. Please try again later."
+            exit 1
+        fi
+    fi
+}
+
 # --- Global Helper function for styled error messages ---
-# Defined globally to be available everywhere and prevent scope issues.
 print_error() {
-    # Use gum if available, otherwise plain echo
     if command -v gum &> /dev/null; then
         gum style --foreground 9 "✖ Error: $1"
     else
@@ -34,34 +78,29 @@ print_error() {
 
 # --- 1. Dependency Check & Installation ---
 check_dependencies() {
-    # First, handle 'gum' itself, as it's needed for the UI.
     if ! command -v gum &> /dev/null; then
         echo "--- Dependency Check ---"
         echo "This script uses 'gum' for a better user experience, but it's not installed."
-        # The '< /dev/tty' is crucial for ensuring this prompt works when run via a pipe (e.g. curl | zsh)
         printf "Would you like to attempt to install it via Homebrew (macOS) or Go? [y/N] "
         read -r response < /dev/tty
         if [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
-            # Using a nested if/else structure to be more robust against shell parsing bugs.
             if command -v brew &> /dev/null; then
                 echo "--> Found Homebrew. Attempting to install 'gum'..."
                 brew install gum
+            elif command -v go &> /dev/null; then
+                echo "--> Found Go. Attempting to install 'gum'..."
+                go install github.com/charmbracelet/gum@latest
             else
-                if command -v go &> /dev/null; then
-                    echo "--> Found Go. Attempting to install 'gum'..."
-                    go install github.com/charmbracelet/gum@latest
-                else
-                    print_error "Could not find Homebrew or Go. Please install 'gum' manually."
-                    echo "   Visit: https://github.com/charmbracelet/gum"
-                    exit 1
-                fi
+                print_error "Could not find Homebrew or Go. Please install 'gum' manually."
+                echo "   Visit: https://github.com/charmbracelet/gum"
+                exit 1
             fi
             
             if ! command -v gum &> /dev/null; then
                 print_error "'gum' installation failed. Please check the output above."
                 exit 1
             else
-                echo "✔ 'gum' installed successfully. Please re-run the script to continue."
+                echo "✔ 'gum' installed successfully. Please re-run this script to continue."
                 exit 0
             fi
         else
@@ -70,7 +109,6 @@ check_dependencies() {
         fi
     fi
 
-    # Now we know gum exists, proceed with checking other dependencies.
     gum style --bold --padding "0 1" "Checking remaining dependencies..."
     local missing_deps=()
     for cmd in curl git; do
@@ -90,12 +128,10 @@ check_dependencies() {
 main() {
     gum style --border normal --margin "1" --padding "1 2" --border-foreground "#0077B6" "NCS Australia - Mise Environment Setup"
 
-    # --- Step 1: Install Mise ---
     if command -v mise &> /dev/null; then
         gum style "✔ 'mise' is already installed. Skipping installation."
     else
         gum spin --spinner dot --title "Installing mise..." -- bash -c "curl -sS https://mise.jdx.dev/install.sh | sh"
-        # Add mise to the current session's PATH to allow subsequent commands to work
         export PATH="$HOME/.local/bin:$PATH"
         if ! command -v mise &> /dev/null; then
             print_error "Mise installation failed. Please check the output above."
@@ -108,49 +144,33 @@ main() {
     local MISE_CONFIG_TOML="$MISE_CONFIG_DIR/config.toml"
     local MISE_ENV_FILE="$MISE_CONFIG_DIR/.env"
 
-    # --- Step 2: Create Standard Configuration Files ---
     mkdir -p "$MISE_CONFIG_DIR"
     gum style --bold "Creating NCS standard configuration files..."
 
-    # Create config.toml
     cat <<'EOF' > "$MISE_CONFIG_TOML"
 # ~/.config/mise/config.toml
 # NCS Australia Standard Mise Configuration
-
 [settings]
 experimental = true
-trusted_config_paths = [
-    "~/.config/mise/config.toml",
-]
-
+trusted_config_paths = ["~/.config/mise/config.toml"]
 [env]
-# This tells mise to load environment variables from the specified file.
-# We will use this for our Zscaler configuration.
 _.file = "~/.config/mise/.env"
-
 [tools]
-# Languages
 go = "latest"
 node = "latest"
 deno = "latest"
 bun = "latest"
 rust = "latest"
-python = "3.12" # Pinned to 3.12 for broad compatibility (e.g., gsutil).
+python = "3.12"
 dart = "latest"
 flutter = "latest"
-lua = "5.1" # Pinned to 5.1 for Neovim compatibility.
+lua = "5.1"
 terraform = "latest"
 pnpm = "latest"
-
-# Mise & Python Tooling
-usage = "latest" # Required for CLI Completions
-pipx = "latest"  # Python package manager
-
-# TUI (Text-based User Interface) Tools
+usage = "latest"
+pipx = "latest"
 lazygit = "latest"
 lazydocker = "latest"
-
-# Core CLI Tools
 gcloud = "latest"
 yq = "latest"
 jq = "latest"
@@ -158,107 +178,70 @@ gh = "latest"
 gitleaks = "latest"
 tokei = "latest"
 zoxide = "latest"
-
-# Neovim Ecosystem Tools
 fzf = "latest"
 fd = "latest"
 ripgrep = "latest"
-
-# Go-based Tools (special syntax)
 "go:github.com/GoogleCloudPlatform/cloud-sql-proxy/v2" = { version = "latest" }
 "go:github.com/air-verse/air" = { version = "latest" }
 "go:github.com/swaggo/swag/cmd/swag" = { version = "latest" }
 "go:github.com/sqlc-dev/sqlc/cmd/sqlc" = { version = "latest" }
 "go:github.com/charmbracelet/freeze" = { version = "latest" }
 "go:github.com/charmbracelet/vhs" = { version = "latest" }
-
-# NPM-based Tools (special syntax)
 "npm:@dataform/cli" = "latest"
 "npm:@google/gemini-cli" = "latest"
 "npm:opencode-ai" = "latest"
-
-# Pipx-based Tools (special syntax)
 "pipx:sqlfluff/sqlfluff" = "latest"
-
-# Cargo-based Tools (special syntax)
 "cargo:tuckr" = "latest"
-
-# --- Task Runner Configuration ---
-# This section defines reusable commands you can run with `mise run <task-name>`
-
 [tasks.bundle-update]
 description = "Runs Update, Upgrade, Cleanup and Autoremove for Brew"
-run = """
-brew update && brew upgrade && brew cleanup && brew autoremove
-"""
-
+run = "brew update && brew upgrade && brew cleanup && brew autoremove"
 [tasks.set-gcp-project]
 description = "Sets the active Google Cloud project and ADC quota project."
 usage = 'arg "<project_id>" "The Google Cloud Project ID to set."'
-run = """
-gcloud config set project {{arg(name='project_id')}}
-gcloud auth application-default set-quota-project {{arg(name='project_id')}}
-"""
-
+run = "gcloud config set project {{arg(name='project_id')}} && gcloud auth application-default set-quota-project {{arg(name='project_id')}}"
 [tasks.banish-ds-store]
 description = "Removes .DS_Store files from a Git repository."
 dir = "{{cwd}}"
-run = """
-find . -name .DS_Store -print0 | xargs -0 git rm -f --ignore-unmatch
-echo .DS_Store >> .gitignore
-git add .gitignore
-git commit -m ':fire: .DS_Store banished!'
-git push
-"""
+run = "find . -name .DS_Store -print0 | xargs -0 git rm -f --ignore-unmatch && echo .DS_Store >> .gitignore && git add .gitignore && git commit -m ':fire: .DS_Store banished!' && git push"
 EOF
     gum style "✔ Created $(gum style --foreground '#00B4D8' "$MISE_CONFIG_TOML")"
 
-    # Create .env file for Zscaler
-    cat <<'EOF' > "$MISE_ENV_FILE"
+    # Create .env file for Zscaler.
+    # We remove the quotes from <<'EOF' to allow $HOME to be expanded by the shell.
+    # We also explicitly set the full path for every variable to avoid expansion issues
+    # in nested processes like `go get`.
+    cat <<EOF > "$MISE_ENV_FILE"
 # ~/.config/mise/.env
 # This file provides environment variables to all tools managed by mise.
 # It assumes you have run the zscaler.sh script first.
 
 # Zscaler Certificate Configuration
-ZSCALER_CERT_BUNDLE="$HOME/certs/ncs_golden_bundle.pem"
-ZSCALER_CERT_DIR="$HOME/certs"
-SSL_CERT_FILE="$ZSCALER_CERT_BUNDLE"
-SSL_CERT_DIR="$ZSCALER_CERT_DIR"
-CERT_PATH="$ZSCALER_CERT_BUNDLE"
-CERT_DIR="$ZSCALER_CERT_DIR"
-REQUESTS_CA_BUNDLE="$ZSCALER_CERT_BUNDLE"
-CURL_CA_BUNDLE="$ZSCALER_CERT_BUNDLE"
-NODE_EXTRA_CA_CERTS="$ZSCALER_CERT_BUNDLE"
-GRPC_DEFAULT_SSL_ROOTS_FILE_PATH="$ZSCALER_CERT_BUNDLE"
-GIT_SSL_CAINFO="$ZSCALER_CERT_BUNDLE"
-CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE="$ZSCALER_CERT_BUNDLE"
+SSL_CERT_FILE="$HOME/certs/ncs_golden_bundle.pem"
+SSL_CERT_DIR="$HOME/certs"
+CERT_PATH="$HOME/certs/ncs_golden_bundle.pem"
+CERT_DIR="$HOME/certs"
+REQUESTS_CA_BUNDLE="$HOME/certs/ncs_golden_bundle.pem"
+CURL_CA_BUNDLE="$HOME/certs/ncs_golden_bundle.pem"
+NODE_EXTRA_CA_CERTS="$HOME/certs/ncs_golden_bundle.pem"
+GRPC_DEFAULT_SSL_ROOTS_FILE_PATH="$HOME/certs/ncs_golden_bundle.pem"
+GIT_SSL_CAINFO="$HOME/certs/ncs_golden_bundle.pem"
+CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE="$HOME/certs/ncs_golden_bundle.pem"
 EOF
     gum style "✔ Created $(gum style --foreground '#00B4D8' "$MISE_ENV_FILE")"
 
-    # --- Step 3: Activate Mise in Shell ---
     gum style --bold --padding "1 0" "Final Step: Activate 'mise' in your shell"
-
     local shell_type
     local shell_profile
     local activation_cmd
-
-    # We must check the shell by inspecting the parent process, as $ZSH_VERSION etc. aren't set in a `sh` subshell.
     local parent_shell
     parent_shell=$(ps -p $$ -o comm=)
 
     if [[ "$parent_shell" == "zsh" ]]; then
-        shell_type="zsh"
-        shell_profile="$HOME/.zshrc"
-        activation_cmd='eval "$(mise activate zsh)"'
+        shell_type="zsh"; shell_profile="$HOME/.zshrc"; activation_cmd='eval "$(mise activate zsh)"'
     elif [[ "$parent_shell" == "bash" ]]; then
-        shell_type="bash"
-        shell_profile="$HOME/.bash_profile"
-        [ ! -f "$shell_profile" ] && shell_profile="$HOME/.bashrc"
-        activation_cmd='eval "$(mise activate bash)"'
+        shell_type="bash"; shell_profile="$HOME/.bash_profile"; [ ! -f "$shell_profile" ] && shell_profile="$HOME/.bashrc"; activation_cmd='eval "$(mise activate bash)"'
     elif [[ "$parent_shell" == "fish" ]]; then
-        shell_type="fish"
-        shell_profile="$HOME/.config/fish/config.fish"
-        activation_cmd='mise activate fish | source'
+        shell_type="fish"; shell_profile="$HOME/.config/fish/config.fish"; activation_cmd='mise activate fish | source'
     else
         print_error "Could not automatically detect your shell ($parent_shell)."
         gum style "Please add the appropriate activation command for your shell to its startup file."
@@ -268,9 +251,7 @@ EOF
     gum style "Your detected shell is $(gum style --bold "$shell_type"). The required activation command is:"
     gum style "$activation_cmd" --padding "0 2" --border rounded --border-foreground "#90E0EF"
 
-    # Use < /dev/tty to ensure gum can read from the terminal even when piped
     if gum confirm "Append this command to '$shell_profile'?" < /dev/tty; then
-        # Create a backup before modifying
         cp "$shell_profile" "${shell_profile}.bak.$(date +%F-%T)"
         touch "$shell_profile"
         echo -e "\n# Activate mise\n$activation_cmd" >> "$shell_profile"
@@ -279,7 +260,6 @@ EOF
         gum style --foreground 212 "Skipping automatic modification. Please add the activation command manually."
     fi
 
-    # --- Final Instructions ---
     FINAL_MESSAGE=$(cat <<EOF
 NCS Mise Environment Setup Complete!
 
@@ -302,5 +282,9 @@ EOF
 }
 
 # --- Script Entrypoint ---
+# The self-update must be run first. It will exit or re-execute the script.
+self_update "$@"
+
+# The rest of the script will only run if it's up-to-date.
 check_dependencies
 main "$@"
