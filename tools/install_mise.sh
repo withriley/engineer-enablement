@@ -3,7 +3,7 @@
 # NCS Australia - Mise Development Environment Setup Script
 #
 # Author: Emile Hofsink
-# Version: 1.0.1
+# Version: 1.0.2
 #
 # This script automates the complete installation and configuration of 'mise'
 # according to the NCS Australia standard development environment.
@@ -44,10 +44,12 @@ check_dependencies() {
             if command -v brew &> /dev/null; then
                 echo "--> Found Homebrew. Attempting to install 'gum'..."
                 brew install gum
-            elif command -v go &> /dev/null;
+            # Corrected line: added 'then'
+            elif command -v go &> /dev/null; then
                 echo "--> Found Go. Attempting to install 'gum'..."
                 go install github.com/charmbracelet/gum@latest
             else
+                # This print_error call is now safe because the function is defined above.
                 print_error "Could not find Homebrew or Go. Please install 'gum' manually."
                 echo "   Visit: https://github.com/charmbracelet/gum"
                 exit 1
