@@ -3,7 +3,7 @@
 # NCS Australia - Zscaler & Development Environment Setup Script
 #
 # Author: Emile Hofsink
-# Version: 2.3.0
+# Version: 2.3.1
 #
 # This script automates the configuration of a development environment
 # to work seamlessly behind the NCS Zscaler proxy. It automatically
@@ -182,7 +182,9 @@ main() {
     fetch_certs_with_retry() {
         local retries=3
         for i in $(seq 1 $retries); do
-            echo | openssl s_client -showcerts -connect google.com:443 2>/dev/null | sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' > "$ZSCALER_CHAIN_FILE"
+            # Prepending LC_ALL=C ensures that openssl/sed output is not affected by the user's locale,
+            # preventing binary garbage from appearing in the output on some systems.
+            LC_ALL=C echo | openssl s_client -showcerts -connect google.com:443 2>/dev/null | sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' > "$ZSCALER_CHAIN_FILE"
             if [ -s "$ZSCALER_CHAIN_FILE" ]; then return 0; fi
             if [ "$i" -lt "$retries" ]; then sleep 1; fi
         done
