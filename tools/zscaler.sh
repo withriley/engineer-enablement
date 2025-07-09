@@ -3,7 +3,7 @@
 # NCS Australia - Zscaler & Development Environment Setup Script
 #
 # Author: Emile Hofsink
-# Version: 2.6.2
+# Version: 2.6.3
 #
 # This script automates the configuration of a development environment
 # to work seamlessly behind the NCS Zscaler proxy. It automatically
@@ -12,7 +12,7 @@
 # It performs the following actions:
 # 1.  Checks for and downloads the latest version of itself.
 # 2.  Checks for dependencies and offers to install them.
-# 3.  Auto-discovers the Zscaler certificate chain, with retries and verbose logging.
+# 3.  Auto-discovers the Zscaler certificate chain, with retries and enhanced verbose logging.
 # 4.  Validates that the fetched certificate is issued by Zscaler and contains no garbage characters.
 # 5.  Idempotently adds the configuration to the user's shell profile to prevent duplicates.
 # 6.  Provides an '--out-file' option for modularity and a '--verbose' flag for debugging.
@@ -28,7 +28,7 @@
 
 # --- Self-Update Mechanism ---
 SCRIPT_URL="https://raw.githubusercontent.com/withriley/engineer-enablement/main/tools/zscaler.sh"
-CURRENT_VERSION="2.6.2" # This must match the version in this header
+CURRENT_VERSION="2.6.3" # This must match the version in this header
 
 self_update() {
     echo "Checking for script updates..."
@@ -83,7 +83,7 @@ check_dependencies() {
 
     gum style --bold --padding "0 1" "Checking remaining dependencies..."
     local missing_deps=()
-    for cmd in git openssl python3 gcloud; do
+    for cmd in git openssl python3 gcloud awk; do
         if ! command -v "$cmd" &> /dev/null; then missing_deps+=("$cmd"); fi
     done
 
@@ -141,16 +141,24 @@ main() {
     fetch_certs_with_retry() {
         local retries=3
         for i in $(seq 1 $retries); do
+            local openssl_output
             if [ "$verbose" = true ]; then
                 gum style --bold "--- Attempt $i of $retries ---"
                 gum style "Running: LC_ALL=C echo | openssl s_client -showcerts -connect google.com:443"
-                # In verbose mode, show stderr to expose connection errors
-                LC_ALL=C echo | openssl s_client -showcerts -connect google.com:443 2>&1 | awk '/-----BEGIN CERTIFICATE-----/{p=1}; p; /-----END CERTIFICATE-----/{p=0}' > "$ZSCALER_CHAIN_FILE"
+                openssl_output=$(LC_ALL=C echo | openssl s_client -showcerts -connect google.com:443 2>&1)
             else
-                LC_ALL=C echo | openssl s_client -showcerts -connect google.com:443 2>/dev/null | awk '/-----BEGIN CERTIFICATE-----/{p=1}; p; /-----END CERTIFICATE-----/{p=0}' > "$ZSCALER_CHAIN_FILE"
+                openssl_output=$(LC_ALL=C echo | openssl s_client -showcerts -connect google.com:443 2>/dev/null)
             fi
             
-            if [ "$verbose" = true ]; then gum style "Checking if certificate file was created and is not empty..."; fi
+            echo "$openssl_output" | awk '/-----BEGIN CERTIFICATE-----/{p=1}; p; /-----END CERTIFICATE-----/{p=0}' > "$ZSCALER_CHAIN_FILE"
+
+            if [ "$verbose" = true ]; then
+                gum style --bold --padding "1 0" "--- OpenSSL Raw Output (Attempt $i) ---"
+                echo "$openssl_output"
+                gum style --bold "--- End of Raw Output ---"
+                gum style "Checking if certificate file was created and is not empty..."
+            fi
+
             if [ -s "$ZSCALER_CHAIN_FILE" ]; then
                 if [ "$verbose" = true ]; then gum style "✔ File created. Checking for non-ASCII characters..."; fi
                 if grep -qP '[^\x00-\x7F]' "$ZSCALER_CHAIN_FILE"; then
@@ -174,12 +182,10 @@ main() {
         return 1
     }
 
-    if [ "$verbose" = false ]; then
-        gum spin --spinner dot --title "Discovering and fetching Zscaler certificate chain..." -- bash -c "$(declare -f fetch_certs_with_retry); fetch_certs_with_retry"
-    else
-        # Don't use spinner in verbose mode so logs are visible
-        fetch_certs_with_retry
-    fi
+    # Don't use a spinner for the network call, as it can interfere with I/O.
+    # Print a static message instead for a better user experience.
+    gum style --bold "Discovering and fetching Zscaler certificate chain..."
+    fetch_certs_with_retry
     
     if ! openssl x509 -in "$ZSCALER_CHAIN_FILE" -noout -issuer 2>/dev/null | grep -q "Zscaler"; then
         print_error "Failed to fetch a valid Zscaler certificate. Please ensure you are on the NCS network."
@@ -189,7 +195,6 @@ main() {
     
     gum style "✔ Zscaler chain discovered and saved to $(gum style --foreground '#00B4D8' "$ZSCALER_CHAIN_FILE")"
 
-    # ... (Rest of the script: golden bundle creation, shell profile modification, etc. remains the same) ...
     CERTIFI_PATH=$(python3 -m certifi 2>/dev/null)
     if [ -z "$CERTIFI_PATH" ]; then print_error "Could not find 'certifi' package."; exit 1; fi
     gum spin --spinner dot --title "Creating the 'Golden Bundle'..." -- cat "$CERTIFI_PATH" "$ZSCALER_CHAIN_FILE" > "$GOLDEN_BUNDLE_FILE"
