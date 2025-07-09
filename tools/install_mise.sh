@@ -3,7 +3,7 @@
 # NCS Australia - Mise Development Environment Setup Script
 #
 # Author: Emile Hofsink
-# Version: 1.0.2
+# Version: 1.0.3
 #
 # This script automates the complete installation and configuration of 'mise'
 # according to the NCS Australia standard development environment.
@@ -18,21 +18,22 @@
 #
 # Usage:
 #   ./install_mise.sh
-#   Or via one-liner: curl -sSL <url_to_script> | zsh
+#   Or via one-liner: curl -sSL "https://raw.githubusercontent.com/withriley/engineer-enablement/main/tools/install_mise.sh?_=$(date +%s)" | zsh
 #
+
+# --- Global Helper function for styled error messages ---
+# Defined globally to be available everywhere and prevent scope issues.
+print_error() {
+    # Use gum if available, otherwise plain echo
+    if command -v gum &> /dev/null; then
+        gum style --foreground 9 "✖ Error: $1"
+    else
+        echo "✖ Error: $1"
+    fi
+}
 
 # --- 1. Dependency Check & Installation ---
 check_dependencies() {
-    # Helper function for styled error messages
-    print_error() {
-        # Use gum if available, otherwise plain echo
-        if command -v gum &> /dev/null; then
-            gum style --foreground 9 "✖ Error: $1"
-        else
-            echo "✖ Error: $1"
-        fi
-    }
-
     # First, handle 'gum' itself, as it's needed for the UI.
     if ! command -v gum &> /dev/null; then
         echo "--- Dependency Check ---"
@@ -41,18 +42,19 @@ check_dependencies() {
         printf "Would you like to attempt to install it via Homebrew (macOS) or Go? [y/N] "
         read -r response < /dev/tty
         if [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+            # Using a nested if/else structure to be more robust against shell parsing bugs.
             if command -v brew &> /dev/null; then
                 echo "--> Found Homebrew. Attempting to install 'gum'..."
                 brew install gum
-            # Corrected line: added 'then'
-            elif command -v go &> /dev/null; then
-                echo "--> Found Go. Attempting to install 'gum'..."
-                go install github.com/charmbracelet/gum@latest
             else
-                # This print_error call is now safe because the function is defined above.
-                print_error "Could not find Homebrew or Go. Please install 'gum' manually."
-                echo "   Visit: https://github.com/charmbracelet/gum"
-                exit 1
+                if command -v go &> /dev/null; then
+                    echo "--> Found Go. Attempting to install 'gum'..."
+                    go install github.com/charmbracelet/gum@latest
+                else
+                    print_error "Could not find Homebrew or Go. Please install 'gum' manually."
+                    echo "   Visit: https://github.com/charmbracelet/gum"
+                    exit 1
+                fi
             fi
             
             if ! command -v gum &> /dev/null; then
@@ -86,11 +88,6 @@ check_dependencies() {
 
 # --- Main Logic ---
 main() {
-    # Helper function needs to be available in main scope too
-    print_error() {
-        gum style --foreground 9 "✖ Error: $1"
-    }
-
     gum style --border normal --margin "1" --padding "1 2" --border-foreground "#0077B6" "NCS Australia - Mise Environment Setup"
 
     # --- Step 1: Install Mise ---
