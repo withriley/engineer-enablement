@@ -3,7 +3,7 @@
 # NCS Australia - Zscaler & Development Environment Setup Script
 #
 # Author: Emile Hofsink
-# Version: 2.6.3
+# Version: 2.6.4
 #
 # This script automates the configuration of a development environment
 # to work seamlessly behind the NCS Zscaler proxy. It automatically
@@ -28,7 +28,7 @@
 
 # --- Self-Update Mechanism ---
 SCRIPT_URL="https://raw.githubusercontent.com/withriley/engineer-enablement/main/tools/zscaler.sh"
-CURRENT_VERSION="2.6.3" # This must match the version in this header
+CURRENT_VERSION="2.6.4" # This must match the version in this header
 
 self_update() {
     echo "Checking for script updates..."
@@ -144,7 +144,7 @@ main() {
             local openssl_output
             if [ "$verbose" = true ]; then
                 gum style --bold "--- Attempt $i of $retries ---"
-                gum style "Running: LC_ALL=C echo | openssl s_client -showcerts -connect google.com:443"
+                gum style --bold "Running: LC_ALL=C echo | openssl s_client -showcerts -connect google.com:443"
                 openssl_output=$(LC_ALL=C echo | openssl s_client -showcerts -connect google.com:443 2>&1)
             else
                 openssl_output=$(LC_ALL=C echo | openssl s_client -showcerts -connect google.com:443 2>/dev/null)
@@ -161,7 +161,9 @@ main() {
 
             if [ -s "$ZSCALER_CHAIN_FILE" ]; then
                 if [ "$verbose" = true ]; then gum style "✔ File created. Checking for non-ASCII characters..."; fi
-                if grep -qP '[^\x00-\x7F]' "$ZSCALER_CHAIN_FILE"; then
+                # Use a more portable grep command to check for binary garbage.
+                # It checks for any character that is not a printable ASCII character or whitespace.
+                if LC_ALL=C grep -q '[^[:print:][:space:]]' "$ZSCALER_CHAIN_FILE"; then
                     if [ "$verbose" = true ]; then print_error "File contains invalid characters."; fi
                     > "$ZSCALER_CHAIN_FILE" 
                 else
