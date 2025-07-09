@@ -3,7 +3,7 @@
 # NCS Australia - Zscaler & Development Environment Setup Script
 #
 # Author: Emile Hofsink
-# Version: 2.3.4
+# Version: 2.4.0
 #
 # This script automates the configuration of a development environment
 # to work seamlessly behind the NCS Zscaler proxy. It automatically
@@ -12,12 +12,12 @@
 # It performs the following actions:
 # 1.  Checks for required dependencies and offers to install them.
 # 2.  Auto-discovers the Zscaler certificate chain, with retries for reliability.
-# 3.  Validates that the fetched certificate is issued by Zscaler.
+# 3.  Validates that the fetched certificate is issued by Zscaler and contains no garbage characters.
 # 4.  Creates a ~/certs directory to store certificate files.
 # 5.  Locates the active Python's `certifi` CA bundle.
 # 6.  Creates a 'golden bundle' by combining the certifi bundle and the discovered Zscaler chain.
 # 7.  Detects the user's shell (bash, zsh, fish) and uses the correct syntax.
-# 8.  Confirms with the user before appending environment variables to their shell profile.
+# 8.  Sets a comprehensive list of environment variables for maximum tool compatibility.
 # 9.  Sets tool-specific configurations for Git, gcloud, and pip.
 # 10. Provides clear, styled feedback and instructions to the user.
 #
@@ -183,17 +183,19 @@ main() {
     fetch_certs_with_retry() {
         local retries=3
         for i in $(seq 1 $retries); do
-            # Using awk for more robust parsing of certificate blocks.
             LC_ALL=C echo | openssl s_client -showcerts -connect google.com:443 2>/dev/null | awk '/-----BEGIN CERTIFICATE-----/{p=1}; p; /-----END CERTIFICATE-----/{p=0}' > "$ZSCALER_CHAIN_FILE"
             
-            # Check if the file is not empty AND if it's a valid Zscaler cert
             if [ -s "$ZSCALER_CHAIN_FILE" ]; then
-                if openssl x509 -in "$ZSCALER_CHAIN_FILE" -noout -issuer | grep -q "Zscaler"; then
-                    # Success, we got a valid Zscaler cert
-                    return 0
+                # Check for binary garbage characters.
+                if grep -qP '[^\x00-\x7F]' "$ZSCALER_CHAIN_FILE"; then
+                    print_error "Downloaded certificate file contains invalid characters. This may be a network or locale issue."
+                    > "$ZSCALER_CHAIN_FILE" # Invalidate file
+                # Check if the issuer is Zscaler.
+                elif openssl x509 -in "$ZSCALER_CHAIN_FILE" -noout -issuer | grep -q "Zscaler"; then
+                    return 0 # Success!
                 else
-                    # It's a cert, but not from Zscaler. Invalidate it and retry.
-                    > "$ZSCALER_CHAIN_FILE" # Empty the file to signal failure
+                    # It's a valid cert, but not from Zscaler.
+                    > "$ZSCALER_CHAIN_FILE" # Invalidate file
                 fi
             fi
 
@@ -202,7 +204,6 @@ main() {
         return 1
     }
 
-    # Removed the `bash -c` wrapper for more direct execution.
     gum spin --spinner dot --title "Discovering and fetching Zscaler certificate chain..." fetch_certs_with_retry
     
     if [ ! -s "$ZSCALER_CHAIN_FILE" ]; then
@@ -231,11 +232,19 @@ main() {
 # --- Zscaler & NCS Certificate Configuration (added by zscaler.sh) ---
 # This block ensures all command-line tools trust the NCS Zscaler proxy.
 set -gx ZSCALER_CERT_BUNDLE "$HOME/certs/ncs_golden_bundle.pem"
+set -gx ZSCALER_CERT_DIR "$HOME/certs"
+
+# Comprehensive list of environment variables for maximum compatibility.
 set -gx SSL_CERT_FILE "$ZSCALER_CERT_BUNDLE"
-set -gx CURL_CA_BUNDLE "$ZSCALER_CERT_BUNDLE"
+set -gx SSL_CERT_DIR "$ZSCALER_CERT_DIR"
+set -gx CERT_PATH "$ZSCALER_CERT_BUNDLE"
+set -gx CERT_DIR "$ZSCALER_CERT_DIR"
 set -gx REQUESTS_CA_BUNDLE "$ZSCALER_CERT_BUNDLE"
+set -gx CURL_CA_BUNDLE "$ZSCALER_CERT_BUNDLE"
 set -gx NODE_EXTRA_CA_CERTS "$ZSCALER_CERT_BUNDLE"
 set -gx GRPC_DEFAULT_SSL_ROOTS_FILE_PATH "$ZSCALER_CERT_BUNDLE"
+set -gx GIT_SSL_CAINFO "$ZSCALER_CERT_BUNDLE"
+set -gx CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE "$ZSCALER_CERT_BUNDLE"
 # --- End Zscaler Configuration ---
 EOF
 )
@@ -246,11 +255,19 @@ EOF
 # This block ensures all command-line tools trust the NCS Zscaler proxy.
 # The 'ncs_golden_bundle.pem' is a combination of standard CAs and the Zscaler chain.
 export ZSCALER_CERT_BUNDLE="$HOME/certs/ncs_golden_bundle.pem"
+export ZSCALER_CERT_DIR="$HOME/certs"
+
+# Comprehensive list of environment variables for maximum compatibility.
 export SSL_CERT_FILE="$ZSCALER_CERT_BUNDLE"
-export CURL_CA_BUNDLE="$ZSCALER_CERT_BUNDLE"
+export SSL_CERT_DIR="$ZSCALER_CERT_DIR"
+export CERT_PATH="$ZSCALER_CERT_BUNDLE"
+export CERT_DIR="$ZSCALER_CERT_DIR"
 export REQUESTS_CA_BUNDLE="$ZSCALER_CERT_BUNDLE"
+export CURL_CA_BUNDLE="$ZSCALER_CERT_BUNDLE"
 export NODE_EXTRA_CA_CERTS="$ZSCALER_CERT_BUNDLE"
 export GRPC_DEFAULT_SSL_ROOTS_FILE_PATH="$ZSCALER_CERT_BUNDLE"
+export GIT_SSL_CAINFO="$ZSCALER_CERT_BUNDLE"
+export CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE="$ZSCALER_CERT_BUNDLE"
 # --- End Zscaler Configuration ---
 EOF
 )
@@ -269,6 +286,7 @@ EOF
     fi
 
     # --- Configure Specific Tools ---
+    # These are still useful as a fallback for tools that don't respect the environment variables.
     gum spin --spinner line --title "Configuring Git, gcloud, and pip..." -- bash -c "
         git config --global http.sslcainfo '$GOLDEN_BUNDLE_FILE'
         gcloud config set core/custom_ca_certs_file '$GOLDEN_BUNDLE_FILE' >/dev/null 2>&1
