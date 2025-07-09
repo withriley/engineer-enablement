@@ -3,7 +3,7 @@
 # NCS Australia - Zscaler & Development Environment Setup Script
 #
 # Author: Emile Hofsink
-# Version: 2.3.2
+# Version: 2.3.4
 #
 # This script automates the configuration of a development environment
 # to work seamlessly behind the NCS Zscaler proxy. It automatically
@@ -12,13 +12,14 @@
 # It performs the following actions:
 # 1.  Checks for required dependencies and offers to install them.
 # 2.  Auto-discovers the Zscaler certificate chain, with retries for reliability.
-# 3.  Creates a ~/certs directory to store certificate files.
-# 4.  Locates the active Python's `certifi` CA bundle.
-# 5.  Creates a 'golden bundle' by combining the certifi bundle and the discovered Zscaler chain.
-# 6.  Detects the user's shell (bash, zsh, fish) and uses the correct syntax.
-# 7.  Confirms with the user before appending environment variables to their shell profile.
-# 8.  Sets tool-specific configurations for Git, gcloud, and pip.
-# 9.  Provides clear, styled feedback and instructions to the user.
+# 3.  Validates that the fetched certificate is issued by Zscaler.
+# 4.  Creates a ~/certs directory to store certificate files.
+# 5.  Locates the active Python's `certifi` CA bundle.
+# 6.  Creates a 'golden bundle' by combining the certifi bundle and the discovered Zscaler chain.
+# 7.  Detects the user's shell (bash, zsh, fish) and uses the correct syntax.
+# 8.  Confirms with the user before appending environment variables to their shell profile.
+# 9.  Sets tool-specific configurations for Git, gcloud, and pip.
+# 10. Provides clear, styled feedback and instructions to the user.
 #
 # Usage:
 #   ./zscaler.sh
@@ -182,19 +183,30 @@ main() {
     fetch_certs_with_retry() {
         local retries=3
         for i in $(seq 1 $retries); do
-            # Using awk for more robust parsing of certificate blocks. This is more reliable
-            # across different systems than sed for this specific task.
+            # Using awk for more robust parsing of certificate blocks.
             LC_ALL=C echo | openssl s_client -showcerts -connect google.com:443 2>/dev/null | awk '/-----BEGIN CERTIFICATE-----/{p=1}; p; /-----END CERTIFICATE-----/{p=0}' > "$ZSCALER_CHAIN_FILE"
-            if [ -s "$ZSCALER_CHAIN_FILE" ]; then return 0; fi
+            
+            # Check if the file is not empty AND if it's a valid Zscaler cert
+            if [ -s "$ZSCALER_CHAIN_FILE" ]; then
+                if openssl x509 -in "$ZSCALER_CHAIN_FILE" -noout -issuer | grep -q "Zscaler"; then
+                    # Success, we got a valid Zscaler cert
+                    return 0
+                else
+                    # It's a cert, but not from Zscaler. Invalidate it and retry.
+                    > "$ZSCALER_CHAIN_FILE" # Empty the file to signal failure
+                fi
+            fi
+
             if [ "$i" -lt "$retries" ]; then sleep 1; fi
         done
         return 1
     }
 
-    gum spin --spinner dot --title "Discovering and fetching Zscaler certificate chain..." -- bash -c "$(declare -f fetch_certs_with_retry); fetch_certs_with_retry"
+    # Removed the `bash -c` wrapper for more direct execution.
+    gum spin --spinner dot --title "Discovering and fetching Zscaler certificate chain..." fetch_certs_with_retry
     
     if [ ! -s "$ZSCALER_CHAIN_FILE" ]; then
-        print_error "Failed to fetch Zscaler certificates after multiple attempts. Are you connected to the NCS network?"
+        print_error "Failed to fetch a valid Zscaler certificate. Please ensure you are on the NCS network."
         exit 1
     fi
     
