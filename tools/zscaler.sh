@@ -3,32 +3,41 @@
 # NCS Australia - Zscaler & Development Environment Setup Script
 #
 # Author: Emile Hofsink
-# Version: 2.0.0
+# Version: 2.3.0
 #
 # This script automates the configuration of a development environment
 # to work seamlessly behind the NCS Zscaler proxy. It automatically
 # discovers and fetches the required Zscaler CA certificates.
 #
 # It performs the following actions:
-# 1.  Checks for required dependencies (gum, git, gcloud, python3, pip, openssl).
-# 2.  Offers to install 'gum' if it is missing.
-# 3.  Auto-discovers the Zscaler certificate chain by connecting to an external site.
-# 4.  Creates a ~/certs directory to store certificate files.
-# 5.  Locates the active Python's `certifi` CA bundle.
-# 6.  Creates a 'golden bundle' by combining the certifi bundle and the discovered Zscaler chain.
+# 1.  Checks for required dependencies and offers to install them.
+# 2.  Auto-discovers the Zscaler certificate chain, with retries for reliability.
+# 3.  Creates a ~/certs directory to store certificate files.
+# 4.  Locates the active Python's `certifi` CA bundle.
+# 5.  Creates a 'golden bundle' by combining the certifi bundle and the discovered Zscaler chain.
+# 6.  Detects the user's shell (bash, zsh, fish) and uses the correct syntax.
 # 7.  Confirms with the user before appending environment variables to their shell profile.
 # 8.  Sets tool-specific configurations for Git, gcloud, and pip.
 # 9.  Provides clear, styled feedback and instructions to the user.
 #
 # Usage:
-#   ./setup_ncs_certs.sh
+#   ./zscaler.sh
 #   (No arguments are needed)
 #
 
-# --- 1. Dependency Check ---
+# --- 1. Dependency Check & Installation ---
 check_dependencies() {
-    # Check for gum first, as it's essential for the UI.
-    # We use standard 'echo' and 'read' here since gum may not be installed yet.
+    # Helper function for styled error messages
+    print_error() {
+        # Use gum if available, otherwise plain echo
+        if command -v gum &> /dev/null; then
+            gum style --foreground 9 "✖ Error: $1"
+        else
+            echo "✖ Error: $1"
+        fi
+    }
+
+    # First, handle 'gum' itself, as it's needed for the UI.
     if ! command -v gum &> /dev/null; then
         echo "--- Dependency Check ---"
         echo "This script uses 'gum' for a better user experience, but it's not installed."
@@ -42,41 +51,76 @@ check_dependencies() {
                 echo "--> Found Go. Attempting to install 'gum'..."
                 go install github.com/charmbracelet/gum@latest
             else
-                echo "✖ Could not find Homebrew or Go. Please install 'gum' manually."
+                print_error "Could not find Homebrew or Go. Please install 'gum' manually."
                 echo "   Visit: https://github.com/charmbracelet/gum"
                 exit 1
             fi
-            # Verify installation post-attempt
+            
             if ! command -v gum &> /dev/null; then
-                echo "✖ 'gum' installation failed. Please install it manually and re-run the script."
+                print_error "'gum' installation failed. Please check the output above."
                 exit 1
+            else
+                echo "✔ 'gum' installed successfully. Please re-run this script to continue."
+                exit 0
             fi
-             echo "✔ 'gum' installed successfully. Please re-run the script."
-             exit 0
         else
-            echo "✖ 'gum' is required to proceed. Please install it and re-run the script."
+            print_error "'gum' is required to proceed. Please install it and re-run the script."
             exit 1
         fi
     fi
 
-    # Helper function for styled error messages, now that we know gum exists.
-    print_error() {
-        gum style --foreground 9 "✖ Error: $1"
-    }
-
-    # Now that we know gum exists, we can use it for the rest of the checks
+    # Now we know gum exists, proceed with checking other dependencies.
     gum style --bold --padding "0 1" "Checking remaining dependencies..."
-    local missing_deps=0
-    # Added 'openssl' to the dependency list
-    for cmd in git gcloud python3 pip openssl; do
+    local missing_deps=()
+    for cmd in git openssl python3 gcloud; do
         if ! command -v "$cmd" &> /dev/null; then
-            print_error "'$cmd' command not found. Please install it and try again."
-            missing_deps=$((missing_deps + 1))
+            missing_deps+=("$cmd")
         fi
     done
 
-    if [ "$missing_deps" -gt 0 ]; then
-        gum style --bold "Aborting due to missing dependencies."
+    if [ ${#missing_deps[@]} -gt 0 ]; then
+        gum style --foreground 212 "The following required tools are missing: ${missing_deps[*]}"
+        if ! gum confirm "Attempt to install them now?"; then
+            print_error "Aborting. Please install the missing dependencies and re-run."
+            exit 1
+        fi
+
+        local deps_installed=false
+        for dep in "${missing_deps[@]}"; do
+            gum style "--- Installing '$dep' ---"
+            case "$dep" in
+                gcloud)
+                    gum style "The Google Cloud SDK requires manual installation steps." \
+                        "Please follow the official guide:" \
+                        "https://cloud.google.com/sdk/docs/install"
+                    gum style "After installation, please re-run this script."
+                    exit 0
+                    ;;
+                *)
+                    if command -v brew &> /dev/null; then
+                        brew install "$dep"
+                        deps_installed=true
+                    elif command -v apt-get &> /dev/null; then
+                        sudo apt-get update && sudo apt-get install -y "$dep"
+                        # On debian, pip is often separate
+                        [ "$dep" = "python3" ] && sudo apt-get install -y python3-pip
+                        deps_installed=true
+                    else
+                        print_error "Could not find a known package manager (brew, apt-get). Please install '$dep' manually."
+                        exit 1
+                    fi
+                    ;;
+            esac
+        done
+
+        if [ "$deps_installed" = true ]; then
+            gum style --foreground 10 "✔ Dependencies installed. Please re-run this script to continue."
+            exit 0
+        fi
+    fi
+    # Final check for pip after python3 might have been installed
+    if ! command -v pip &> /dev/null && ! command -v pip3 &> /dev/null; then
+        print_error "'pip' is not installed. Please ensure your Python installation includes pip."
         exit 1
     fi
     gum style --foreground 10 "✔ All dependencies are satisfied."
@@ -93,10 +137,9 @@ main() {
     gum style --border normal --margin "1" --padding "1 2" --border-foreground "#0077B6" "NCS Australia - Zscaler & Development Environment Setup"
 
     # --- Input Validation ---
-    # The script no longer takes arguments.
     if [ "$#" -ne 0 ]; then
         print_error "This script does not accept any arguments."
-        gum style "Usage: ./setup_ncs_certs.sh"
+        gum style "Usage: ./zscaler.sh"
         exit 1
     fi
 
@@ -105,12 +148,21 @@ main() {
     ZSCALER_CHAIN_FILE="$CERT_DIR/zscaler_chain.pem"
     GOLDEN_BUNDLE_FILE="$CERT_DIR/ncs_golden_bundle.pem"
     SHELL_PROFILE=""
+    SHELL_TYPE=""
 
+    # Detect shell type and set profile path accordingly
     if [ -n "$ZSH_VERSION" ]; then
        SHELL_PROFILE="$HOME/.zshrc"
+       SHELL_TYPE="posix"
     elif [ -n "$BASH_VERSION" ]; then
        SHELL_PROFILE="$HOME/.bash_profile"
        [ ! -f "$SHELL_PROFILE" ] && SHELL_PROFILE="$HOME/.bashrc"
+       SHELL_TYPE="posix"
+    elif [ -n "$FISH_VERSION" ]; then
+       # Ensure the fish config directory exists
+       mkdir -p "$HOME/.config/fish"
+       SHELL_PROFILE="$HOME/.config/fish/config.fish"
+       SHELL_TYPE="fish"
     else
         gum style --foreground 212 "Could not auto-detect shell. Please choose your profile file:"
         SHELL_PROFILE=$(gum file "$HOME")
@@ -118,26 +170,29 @@ main() {
             print_error "No shell profile selected. Aborting."
             exit 1
         fi
+        # Make a best guess for unknown shells
+        SHELL_TYPE="posix"
+        gum style --foreground 212 "Assuming POSIX-compatible shell syntax (export VAR=value)."
     fi
     gum style "✔ Using shell profile: $(gum style --foreground '#00B4D8' "$SHELL_PROFILE")"
 
     # --- Auto-discover and Fetch Certificates ---
     mkdir -p "$CERT_DIR"
     
-    # Use openssl to connect to an external site and capture the certificate chain presented by Zscaler.
-    # The sed command extracts only the PEM-formatted certificate blocks.
-    # We define this as a function to make it work cleanly with gum spin.
-    fetch_certs() {
-        # The 'echo' prevents openssl from waiting for stdin.
-        # 2>/dev/null suppresses connection errors from appearing in the output.
-        echo | openssl s_client -showcerts -connect google.com:443 2>/dev/null | sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' > "$ZSCALER_CHAIN_FILE"
+    fetch_certs_with_retry() {
+        local retries=3
+        for i in $(seq 1 $retries); do
+            echo | openssl s_client -showcerts -connect google.com:443 2>/dev/null | sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' > "$ZSCALER_CHAIN_FILE"
+            if [ -s "$ZSCALER_CHAIN_FILE" ]; then return 0; fi
+            if [ "$i" -lt "$retries" ]; then sleep 1; fi
+        done
+        return 1
     }
 
-    gum spin --spinner dot --title "Discovering and fetching Zscaler certificate chain..." -- bash -c "$(declare -f fetch_certs); fetch_certs"
+    gum spin --spinner dot --title "Discovering and fetching Zscaler certificate chain..." -- bash -c "$(declare -f fetch_certs_with_retry); fetch_certs_with_retry"
     
-    # Check if the file was created and is not empty
     if [ ! -s "$ZSCALER_CHAIN_FILE" ]; then
-        print_error "Failed to fetch Zscaler certificates. Are you connected to the NCS network?"
+        print_error "Failed to fetch Zscaler certificates after multiple attempts. Are you connected to the NCS network?"
         exit 1
     fi
     
@@ -146,7 +201,7 @@ main() {
     # --- Create the Golden Bundle ---
     CERTIFI_PATH=$(python3 -m certifi 2>/dev/null)
     if [ -z "$CERTIFI_PATH" ]; then
-        print_error "Could not find 'certifi' package. Please ensure it is installed."
+        print_error "Could not find 'certifi' package. Please ensure it is installed (`pip install --upgrade certifi`)."
         exit 1
     fi
 
@@ -155,25 +210,43 @@ main() {
     gum style "✔ Golden Bundle created at $(gum style --foreground '#00B4D8' "$GOLDEN_BUNDLE_FILE")"
 
     # --- Configure Shell Environment ---
-    ENV_CONFIG_BLOCK=$(cat <<EOF
+    ENV_CONFIG_BLOCK=""
+    if [ "$SHELL_TYPE" = "fish" ]; then
+        ENV_CONFIG_BLOCK=$(cat <<'EOF'
 
-# --- Zscaler & NCS Certificate Configuration (added by setup_ncs_certs.sh) ---
+# --- Zscaler & NCS Certificate Configuration (added by zscaler.sh) ---
 # This block ensures all command-line tools trust the NCS Zscaler proxy.
-# The 'ncs_golden_bundle.pem' is a combination of standard CAs and the Zscaler chain.
-export ZSCALER_CERT_BUNDLE="\$HOME/certs/ncs_golden_bundle.pem"
-export SSL_CERT_FILE="\$ZSCALER_CERT_BUNDLE"
-export CURL_CA_BUNDLE="\$ZSCALER_CERT_BUNDLE"
-export REQUESTS_CA_BUNDLE="\$ZSCALER_CERT_BUNDLE"
-export NODE_EXTRA_CA_CERTS="\$ZSCALER_CERT_BUNDLE"
-export GRPC_DEFAULT_SSL_ROOTS_FILE_PATH="\$ZSCALER_CERT_BUNDLE"
+set -gx ZSCALER_CERT_BUNDLE "$HOME/certs/ncs_golden_bundle.pem"
+set -gx SSL_CERT_FILE "$ZSCALER_CERT_BUNDLE"
+set -gx CURL_CA_BUNDLE "$ZSCALER_CERT_BUNDLE"
+set -gx REQUESTS_CA_BUNDLE "$ZSCALER_CERT_BUNDLE"
+set -gx NODE_EXTRA_CA_CERTS "$ZSCALER_CERT_BUNDLE"
+set -gx GRPC_DEFAULT_SSL_ROOTS_FILE_PATH "$ZSCALER_CERT_BUNDLE"
 # --- End Zscaler Configuration ---
 EOF
 )
+    else # Default to POSIX syntax for bash, zsh, etc.
+        ENV_CONFIG_BLOCK=$(cat <<'EOF'
+
+# --- Zscaler & NCS Certificate Configuration (added by zscaler.sh) ---
+# This block ensures all command-line tools trust the NCS Zscaler proxy.
+# The 'ncs_golden_bundle.pem' is a combination of standard CAs and the Zscaler chain.
+export ZSCALER_CERT_BUNDLE="$HOME/certs/ncs_golden_bundle.pem"
+export SSL_CERT_FILE="$ZSCALER_CERT_BUNDLE"
+export CURL_CA_BUNDLE="$ZSCALER_CERT_BUNDLE"
+export REQUESTS_CA_BUNDLE="$ZSCALER_CERT_BUNDLE"
+export NODE_EXTRA_CA_CERTS="$ZSCALER_CERT_BUNDLE"
+export GRPC_DEFAULT_SSL_ROOTS_FILE_PATH="$ZSCALER_CERT_BUNDLE"
+# --- End Zscaler Configuration ---
+EOF
+)
+    fi
 
     if gum confirm "Append the following configuration to '$SHELL_PROFILE'?"; then
         gum style "$ENV_CONFIG_BLOCK" --padding "1 2" --border rounded --border-foreground "#90E0EF"
-        # Create a backup before modifying
         cp "$SHELL_PROFILE" "${SHELL_PROFILE}.bak.$(date +%F-%T)"
+        # Ensure the profile file exists before appending
+        touch "$SHELL_PROFILE"
         echo "$ENV_CONFIG_BLOCK" >> "$SHELL_PROFILE"
         gum style "✔ Environment variables added to your shell profile."
     else
