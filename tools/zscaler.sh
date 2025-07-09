@@ -3,47 +3,90 @@
 # NCS Australia - Zscaler & Development Environment Setup Script
 #
 # Author: Emile Hofsink
-# Version: 2.4.0
+# Version: 2.5.0
 #
 # This script automates the configuration of a development environment
 # to work seamlessly behind the NCS Zscaler proxy. It automatically
 # discovers and fetches the required Zscaler CA certificates.
 #
 # It performs the following actions:
-# 1.  Checks for required dependencies and offers to install them.
-# 2.  Auto-discovers the Zscaler certificate chain, with retries for reliability.
-# 3.  Validates that the fetched certificate is issued by Zscaler and contains no garbage characters.
-# 4.  Creates a ~/certs directory to store certificate files.
-# 5.  Locates the active Python's `certifi` CA bundle.
-# 6.  Creates a 'golden bundle' by combining the certifi bundle and the discovered Zscaler chain.
-# 7.  Detects the user's shell (bash, zsh, fish) and uses the correct syntax.
-# 8.  Sets a comprehensive list of environment variables for maximum tool compatibility.
-# 9.  Sets tool-specific configurations for Git, gcloud, and pip.
-# 10. Provides clear, styled feedback and instructions to the user.
+# 1.  Checks for and downloads the latest version of itself.
+# 2.  Checks for dependencies (gum, gcloud, openssl, etc.) and offers to install them.
+# 3.  Auto-discovers the Zscaler certificate chain, with retries for reliability.
+# 4.  Validates that the fetched certificate is issued by Zscaler and contains no garbage characters.
+# 5.  Creates a 'golden bundle' by combining the system certs and the discovered Zscaler chain.
+# 6.  Detects the user's shell (bash, zsh, fish) and uses the correct syntax.
+# 7.  Sets a comprehensive list of environment variables for maximum tool compatibility.
+# 8.  Sets tool-specific configurations for Git, gcloud, and pip.
 #
 # Usage:
-#   ./zscaler.sh
-#   (No arguments are needed)
+#   This script is best run via the one-liner, which saves it to a temporary file.
+#   curl -sSL "https://raw.githubusercontent.com/withriley/engineer-enablement/main/tools/zscaler.sh?_=$(date +%s)" -o /tmp/zscaler.sh && zsh /tmp/zscaler.sh
 #
+
+# --- Self-Update Mechanism ---
+# This ensures the user is always running the latest version of the script.
+SCRIPT_URL="https://raw.githubusercontent.com/withriley/engineer-enablement/main/tools/zscaler.sh"
+CURRENT_VERSION="2.5.0" # This must match the version in this header
+
+self_update() {
+    # Use plain echo since gum may not be installed yet.
+    echo "Checking for script updates..."
+    
+    # Define the path to our custom CA bundle and build the curl options array.
+    local ca_bundle="$HOME/certs/ncs_golden_bundle.pem"
+    local curl_opts=("-sSL")
+
+    # If the custom CA bundle from a previous run of this script exists, tell curl to use it.
+    if [ -f "$ca_bundle" ]; then
+        curl_opts+=("--cacert" "$ca_bundle")
+    fi
+
+    # Fetch the latest version string from the remote script using our cert-aware options.
+    LATEST_VERSION=$(curl "${curl_opts[@]}" "${SCRIPT_URL}?_=$(date +%s)" | grep -m 1 "Version:" | awk '{print $3}')
+
+    if [ -z "$LATEST_VERSION" ]; then
+        echo "Warning: Could not check for script updates. Proceeding with the current version."
+        return
+    fi
+
+    if [ "$LATEST_VERSION" != "$CURRENT_VERSION" ]; then
+        echo "A new version ($LATEST_VERSION) is available. The script will now update and re-launch."
+        
+        local script_path="$0"
+        if [ -z "$script_path" ] || [[ ! -f "$script_path" ]]; then
+            echo "Error: Cannot self-update when run from a pipe. Please use the recommended one-liner."
+            exit 1
+        fi
+
+        if curl "${curl_opts[@]}" "${SCRIPT_URL}?_=$(date +%s)" -o "$script_path.tmp"; then
+            mv "$script_path.tmp" "$script_path"
+            chmod +x "$script_path"
+            echo "Update complete. Re-executing the script..."
+            exec "$script_path" "$@"
+        else
+            echo "Error: Script update failed. Please try again later."
+            exit 1
+        fi
+    fi
+}
+
+# --- Global Helper function for styled error messages ---
+print_error() {
+    if command -v gum &> /dev/null; then
+        gum style --foreground 9 "✖ Error: $1"
+    else
+        echo "✖ Error: $1"
+    fi
+}
 
 # --- 1. Dependency Check & Installation ---
 check_dependencies() {
-    # Helper function for styled error messages
-    print_error() {
-        # Use gum if available, otherwise plain echo
-        if command -v gum &> /dev/null; then
-            gum style --foreground 9 "✖ Error: $1"
-        else
-            echo "✖ Error: $1"
-        fi
-    }
-
-    # First, handle 'gum' itself, as it's needed for the UI.
     if ! command -v gum &> /dev/null; then
         echo "--- Dependency Check ---"
         echo "This script uses 'gum' for a better user experience, but it's not installed."
         printf "Would you like to attempt to install it via Homebrew (macOS) or Go? [y/N] "
-        read -r response
+        read -r response < /dev/tty
         if [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
             if command -v brew &> /dev/null; then
                 echo "--> Found Homebrew. Attempting to install 'gum'..."
@@ -70,7 +113,6 @@ check_dependencies() {
         fi
     fi
 
-    # Now we know gum exists, proceed with checking other dependencies.
     gum style --bold --padding "0 1" "Checking remaining dependencies..."
     local missing_deps=()
     for cmd in git openssl python3 gcloud; do
@@ -81,7 +123,7 @@ check_dependencies() {
 
     if [ ${#missing_deps[@]} -gt 0 ]; then
         gum style --foreground 212 "The following required tools are missing: ${missing_deps[*]}"
-        if ! gum confirm "Attempt to install them now?"; then
+        if ! gum confirm "Attempt to install them now?" < /dev/tty; then
             print_error "Aborting. Please install the missing dependencies and re-run."
             exit 1
         fi
@@ -103,7 +145,6 @@ check_dependencies() {
                         deps_installed=true
                     elif command -v apt-get &> /dev/null; then
                         sudo apt-get update && sudo apt-get install -y "$dep"
-                        # On debian, pip is often separate
                         [ "$dep" = "python3" ] && sudo apt-get install -y python3-pip
                         deps_installed=true
                     else
@@ -119,7 +160,6 @@ check_dependencies() {
             exit 0
         fi
     fi
-    # Final check for pip after python3 might have been installed
     if ! command -v pip &> /dev/null && ! command -v pip3 &> /dev/null; then
         print_error "'pip' is not installed. Please ensure your Python installation includes pip."
         exit 1
@@ -130,90 +170,63 @@ check_dependencies() {
 
 # --- Main Logic ---
 main() {
-    # Helper function needs to be available in main scope too
-    print_error() {
-        gum style --foreground 9 "✖ Error: $1"
-    }
-
     gum style --border normal --margin "1" --padding "1 2" --border-foreground "#0077B6" "NCS Australia - Zscaler & Development Environment Setup"
 
-    # --- Input Validation ---
     if [ "$#" -ne 0 ]; then
         print_error "This script does not accept any arguments."
         gum style "Usage: ./zscaler.sh"
         exit 1
     fi
 
-    # --- Define Paths and Profile ---
     CERT_DIR="$HOME/certs"
     ZSCALER_CHAIN_FILE="$CERT_DIR/zscaler_chain.pem"
     GOLDEN_BUNDLE_FILE="$CERT_DIR/ncs_golden_bundle.pem"
     SHELL_PROFILE=""
     SHELL_TYPE=""
 
-    # Detect shell type and set profile path accordingly
     if [ -n "$ZSH_VERSION" ]; then
-       SHELL_PROFILE="$HOME/.zshrc"
-       SHELL_TYPE="posix"
+       SHELL_PROFILE="$HOME/.zshrc"; SHELL_TYPE="posix"
     elif [ -n "$BASH_VERSION" ]; then
-       SHELL_PROFILE="$HOME/.bash_profile"
-       [ ! -f "$SHELL_PROFILE" ] && SHELL_PROFILE="$HOME/.bashrc"
-       SHELL_TYPE="posix"
+       SHELL_PROFILE="$HOME/.bash_profile"; [ ! -f "$SHELL_PROFILE" ] && SHELL_PROFILE="$HOME/.bashrc"; SHELL_TYPE="posix"
     elif [ -n "$FISH_VERSION" ]; then
-       # Ensure the fish config directory exists
-       mkdir -p "$HOME/.config/fish"
-       SHELL_PROFILE="$HOME/.config/fish/config.fish"
-       SHELL_TYPE="fish"
+       mkdir -p "$HOME/.config/fish"; SHELL_PROFILE="$HOME/.config/fish/config.fish"; SHELL_TYPE="fish"
     else
         gum style --foreground 212 "Could not auto-detect shell. Please choose your profile file:"
         SHELL_PROFILE=$(gum file "$HOME")
-        if [ -z "$SHELL_PROFILE" ]; then
-            print_error "No shell profile selected. Aborting."
-            exit 1
-        fi
-        # Make a best guess for unknown shells
-        SHELL_TYPE="posix"
-        gum style --foreground 212 "Assuming POSIX-compatible shell syntax (export VAR=value)."
+        if [ -z "$SHELL_PROFILE" ]; then print_error "No shell profile selected. Aborting."; exit 1; fi
+        SHELL_TYPE="posix"; gum style --foreground 212 "Assuming POSIX-compatible shell syntax (export VAR=value)."
     fi
     gum style "✔ Using shell profile: $(gum style --foreground '#00B4D8' "$SHELL_PROFILE")"
 
-    # --- Auto-discover and Fetch Certificates ---
     mkdir -p "$CERT_DIR"
     
     fetch_certs_with_retry() {
         local retries=3
         for i in $(seq 1 $retries); do
             LC_ALL=C echo | openssl s_client -showcerts -connect google.com:443 2>/dev/null | awk '/-----BEGIN CERTIFICATE-----/{p=1}; p; /-----END CERTIFICATE-----/{p=0}' > "$ZSCALER_CHAIN_FILE"
-            
             if [ -s "$ZSCALER_CHAIN_FILE" ]; then
-                # Check for binary garbage characters.
                 if grep -qP '[^\x00-\x7F]' "$ZSCALER_CHAIN_FILE"; then
-                    print_error "Downloaded certificate file contains invalid characters. This may be a network or locale issue."
-                    > "$ZSCALER_CHAIN_FILE" # Invalidate file
-                # Check if the issuer is Zscaler.
+                    > "$ZSCALER_CHAIN_FILE" 
                 elif openssl x509 -in "$ZSCALER_CHAIN_FILE" -noout -issuer | grep -q "Zscaler"; then
-                    return 0 # Success!
+                    return 0
                 else
-                    # It's a valid cert, but not from Zscaler.
-                    > "$ZSCALER_CHAIN_FILE" # Invalidate file
+                    > "$ZSCALER_CHAIN_FILE" 
                 fi
             fi
-
             if [ "$i" -lt "$retries" ]; then sleep 1; fi
         done
         return 1
     }
 
-    gum spin --spinner dot --title "Discovering and fetching Zscaler certificate chain..." fetch_certs_with_retry
+    gum spin --spinner dot --title "Discovering and fetching Zscaler certificate chain..." -- bash -c "$(declare -f fetch_certs_with_retry); fetch_certs_with_retry"
     
-    if [ ! -s "$ZSCALER_CHAIN_FILE" ]; then
+    if ! openssl x509 -in "$ZSCALER_CHAIN_FILE" -noout -issuer 2>/dev/null | grep -q "Zscaler"; then
         print_error "Failed to fetch a valid Zscaler certificate. Please ensure you are on the NCS network."
         exit 1
     fi
     
     gum style "✔ Zscaler chain discovered and saved to $(gum style --foreground '#00B4D8' "$ZSCALER_CHAIN_FILE")"
 
-    # --- Create the Golden Bundle ---
     CERTIFI_PATH=$(python3 -m certifi 2>/dev/null)
     if [ -z "$CERTIFI_PATH" ]; then
         print_error "Could not find 'certifi' package. Please ensure it is installed (`pip install --upgrade certifi`)."
@@ -224,17 +237,13 @@ main() {
         cat "$CERTIFI_PATH" "$ZSCALER_CHAIN_FILE" > "$GOLDEN_BUNDLE_FILE"
     gum style "✔ Golden Bundle created at $(gum style --foreground '#00B4D8' "$GOLDEN_BUNDLE_FILE")"
 
-    # --- Configure Shell Environment ---
     ENV_CONFIG_BLOCK=""
     if [ "$SHELL_TYPE" = "fish" ]; then
-        ENV_CONFIG_BLOCK=$(cat <<'EOF'
+        ENV_CONFIG_BLOCK=$(cat <<EOF
 
 # --- Zscaler & NCS Certificate Configuration (added by zscaler.sh) ---
-# This block ensures all command-line tools trust the NCS Zscaler proxy.
 set -gx ZSCALER_CERT_BUNDLE "$HOME/certs/ncs_golden_bundle.pem"
 set -gx ZSCALER_CERT_DIR "$HOME/certs"
-
-# Comprehensive list of environment variables for maximum compatibility.
 set -gx SSL_CERT_FILE "$ZSCALER_CERT_BUNDLE"
 set -gx SSL_CERT_DIR "$ZSCALER_CERT_DIR"
 set -gx CERT_PATH "$ZSCALER_CERT_BUNDLE"
@@ -248,16 +257,12 @@ set -gx CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE "$ZSCALER_CERT_BUNDLE"
 # --- End Zscaler Configuration ---
 EOF
 )
-    else # Default to POSIX syntax for bash, zsh, etc.
-        ENV_CONFIG_BLOCK=$(cat <<'EOF'
+    else 
+        ENV_CONFIG_BLOCK=$(cat <<EOF
 
 # --- Zscaler & NCS Certificate Configuration (added by zscaler.sh) ---
-# This block ensures all command-line tools trust the NCS Zscaler proxy.
-# The 'ncs_golden_bundle.pem' is a combination of standard CAs and the Zscaler chain.
 export ZSCALER_CERT_BUNDLE="$HOME/certs/ncs_golden_bundle.pem"
 export ZSCALER_CERT_DIR="$HOME/certs"
-
-# Comprehensive list of environment variables for maximum compatibility.
 export SSL_CERT_FILE="$ZSCALER_CERT_BUNDLE"
 export SSL_CERT_DIR="$ZSCALER_CERT_DIR"
 export CERT_PATH="$ZSCALER_CERT_BUNDLE"
@@ -273,10 +278,9 @@ EOF
 )
     fi
 
-    if gum confirm "Append the following configuration to '$SHELL_PROFILE'?"; then
+    if gum confirm "Append the following configuration to '$SHELL_PROFILE'?" < /dev/tty; then
         gum style "$ENV_CONFIG_BLOCK" --padding "1 2" --border rounded --border-foreground "#90E0EF"
         cp "$SHELL_PROFILE" "${SHELL_PROFILE}.bak.$(date +%F-%T)"
-        # Ensure the profile file exists before appending
         touch "$SHELL_PROFILE"
         echo "$ENV_CONFIG_BLOCK" >> "$SHELL_PROFILE"
         gum style "✔ Environment variables added to your shell profile."
@@ -285,8 +289,6 @@ EOF
         gum style "$ENV_CONFIG_BLOCK" --padding "1 2" --border rounded --border-foreground "#90E0EF"
     fi
 
-    # --- Configure Specific Tools ---
-    # These are still useful as a fallback for tools that don't respect the environment variables.
     gum spin --spinner line --title "Configuring Git, gcloud, and pip..." -- bash -c "
         git config --global http.sslcainfo '$GOLDEN_BUNDLE_FILE'
         gcloud config set core/custom_ca_certs_file '$GOLDEN_BUNDLE_FILE' >/dev/null 2>&1
@@ -294,7 +296,6 @@ EOF
     "
     gum style "✔ Git, gcloud, and pip have been configured."
 
-    # --- Final Instructions ---
     FINAL_MESSAGE=$(cat <<EOF
 NCS Environment Configuration Complete!
 
@@ -312,5 +313,6 @@ EOF
 }
 
 # --- Script Entrypoint ---
+self_update "$@"
 check_dependencies
 main "$@"
