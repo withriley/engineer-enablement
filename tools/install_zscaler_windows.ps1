@@ -8,7 +8,7 @@
 
 .NOTES
     Author: Emile Hofsink
-    Version: 1.2.5
+    Version: 1.2.6
     Requires: Windows PowerShell 5.1+ or PowerShell 7+
     Run this script in an Administrator PowerShell session.
 
@@ -18,10 +18,6 @@
 .EXAMPLE
     .\install_zscaler_windows.ps1 -Verbose
 #>
-[CmdletBinding()]
-param (
-    [Switch]$Verbose
-)
 
 # --- Script Setup ---
 $ErrorActionPreference = 'SilentlyContinue' # Allow manual error checking
@@ -191,7 +187,6 @@ function Main {
     foreach ($key in $envVars.Keys) {
         $value = $envVars[$key]
         [System.Environment]::SetEnvironmentVariable($key, $value, [System.EnvironmentVariableTarget]::User)
-        $env:$key = $value
         $verboseMsg = "Set User Env Var: {0} = {1}" -f $key, $value
         Write-Verbose $verboseMsg
     }
@@ -216,3 +211,4 @@ function Main {
 # --- Script Entrypoint ---
 Check-Dependencies
 Main
+
