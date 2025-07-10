@@ -8,7 +8,7 @@
 
 .NOTES
     Author: Emile Hofsink
-    Version: 1.2.2
+    Version: 1.2.3
     Requires: Windows PowerShell 5.1+ or PowerShell 7+
     Run this script in an Administrator PowerShell session.
 
@@ -66,7 +66,7 @@ function Check-Dependencies {
                 exit
             } catch {
                 $exception = $_
-                Write-ErrorMsg ("Scoop installation failed: " + $exception.Exception.Message)
+                Write-ErrorMsg ("Scoop installation failed: {0}" -f $exception.Exception.Message)
                 exit
             }
         } else {
@@ -89,7 +89,7 @@ function Check-Dependencies {
                     Write-Success "$dep installed."
                 } catch {
                     $exception = $_
-                    Write-ErrorMsg ("Failed to install $dep: " + $exception.Exception.Message)
+                    Write-ErrorMsg ("Failed to install '{0}': {1}" -f $dep, $exception.Exception.Message)
                 }
             }
             Write-Success "Dependency installation complete. Please close and re-open this Administrator PowerShell session, then re-run the script."
@@ -104,7 +104,7 @@ function Check-Dependencies {
 
 # --- Main Logic ---
 function Main {
-    $CurrentVersion = "1.2.2"
+    $CurrentVersion = "1.2.3"
     Write-Styled -Message "===========================================================" -ForegroundColor 'Cyan'
     Write-Styled -Message "  NCS Australia - Zscaler Setup for Windows (v$CurrentVersion)" -ForegroundColor 'Cyan'
     Write-Styled -Message "===========================================================" -ForegroundColor 'Cyan'
@@ -145,7 +145,7 @@ function Main {
             }
         } catch {
             $exception = $_
-            Write-Verbose ("✖ Connection or certificate fetch failed on attempt $i: " + $exception.Exception.Message)
+            Write-Verbose ("✖ Connection or certificate fetch failed on attempt {0}: {1}" -f $i, $exception.Exception.Message)
         }
         if ($i -lt $retries) { Start-Sleep -Seconds 1 }
     }
@@ -162,7 +162,7 @@ function Main {
         Write-Success "Zscaler Root CA successfully installed for the current user."
     } catch {
         $exception = $_
-        Write-ErrorMsg ("Failed to install certificate to Windows Trust Store: " + $exception.Exception.Message)
+        Write-ErrorMsg ("Failed to install certificate to Windows Trust Store: {0}" -f $exception.Exception.Message)
     }
 
     Write-Styled -Message "Creating the 'Golden Bundle'..." -ForegroundColor 'Yellow'
@@ -196,10 +196,10 @@ function Main {
             [System.Environment]::SetEnvironmentVariable($key, $value, [System.EnvironmentVariableTarget]::User)
             # Set for the current process using the robust Set-Item cmdlet
             Set-Item -Path "Env:\$key" -Value $value
-            Write-Verbose "Set User Env Var: ${key} = ${value}"
+            Write-Verbose ("Set User Env Var: {0} = {1}" -f $key, $value)
         } catch {
             $exception = $_
-            Write-ErrorMsg ("Failed to set environment variable '$key': " + $exception.Exception.Message)
+            Write-ErrorMsg ("Failed to set environment variable '{0}': {1}" -f $key, $exception.Exception.Message)
         }
     }
     Write-Success "System environment variables have been set."
@@ -210,21 +210,21 @@ function Main {
         Write-Success "Git config set."
     } catch {
         $exception = $_
-        Write-Warning ("Could not configure Git: " + $exception.Exception.Message)
+        Write-Warning ("Could not configure Git: {0}" -f $exception.Exception.Message)
     }
     try {
         gcloud config set core/custom_ca_certs_file $goldenBundleFile
         Write-Success "gcloud config set."
     } catch {
         $exception = $_
-        Write-Warning ("Could not configure gcloud: " + $exception.Exception.Message)
+        Write-Warning ("Could not configure gcloud: {0}" -f $exception.Exception.Message)
     }
     try {
         pip config set global.cert $goldenBundleFile
         Write-Success "pip config set."
     } catch {
         $exception = $_
-        Write-Warning ("Could not configure pip: " + $exception.Exception.Message)
+        Write-Warning ("Could not configure pip: {0}" -f $exception.Exception.Message)
     }
 
     Write-Styled -Message "===========================================================" -ForegroundColor 'Cyan'
