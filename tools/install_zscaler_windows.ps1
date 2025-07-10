@@ -8,7 +8,7 @@
 
 .NOTES
     Author: Emile Hofsink
-    Version: 1.2.6
+    Version: 1.2.7
     Requires: Windows PowerShell 5.1+ or PowerShell 7+
     Run this script in an Administrator PowerShell session.
 
@@ -20,7 +20,8 @@
 #>
 
 # --- Script Setup ---
-$ErrorActionPreference = 'SilentlyContinue' # Allow manual error checking
+# Use SilentlyContinue so we can check the success of each command manually.
+$ErrorActionPreference = 'SilentlyContinue' 
 $global:VerbosePreference = if ($Verbose) { 'Continue' } else { 'SilentlyContinue' }
 
 # --- Helper Functions ---
@@ -98,9 +99,9 @@ function Get-Dependencies {
 
 # --- Main Logic ---
 function Install-Zscaler {
-    $CurrentVersion = "1.2.5"
+    $CurrentVersion = "1.2.7"
     Write-Styled -Message "===========================================================" -ForegroundColor 'Cyan'
-    Write-Styled -Message "  NCS Australia - Zscaler Setup for Windows (v$CurrentVersion)" -ForegroundColor 'Cyan'
+    Write-Styled -Message ("  NCS Australia - Zscaler Setup for Windows (v{0})" -f $CurrentVersion) -ForegroundColor 'Cyan'
     Write-Styled -Message "===========================================================" -ForegroundColor 'Cyan'
     
     $certsDir = Join-Path $HOME "certs"
@@ -114,14 +115,13 @@ function Install-Zscaler {
     $success = $false
     $retries = 3
     for ($i = 1; $i -le $retries; $i++) {
-        Write-Verbose "--- Attempt $i of $retries ---"
+        Write-Verbose ("--- Attempt {0} of {1} ---" -f $i, $retries)
         
         $request = [System.Net.HttpWebRequest]::Create("https://google.com")
         $request.ServerCertificateValidationCallback = { $true }
         $response = $request.GetResponse()
         if (-not $?) {
-            Write-Verbose "✖ Connection failed on attempt $i."
-            Write-Verbose $response
+            Write-Verbose ("✖ Connection failed on attempt {0}." -f $i)
             if ($i -lt $retries) { Start-Sleep -Seconds 1; continue } else { break }
         }
 
@@ -138,8 +138,8 @@ function Install-Zscaler {
         if ($issuer -like '*Zscaler*') {
             Write-Verbose "✔ Issuer is Zscaler. Success!"
             $success = $true
-        } 
-        else {
+            break
+        } else {
             Write-Verbose "✖ Certificate issuer is not Zscaler."
             Remove-Item $zscalerChainFile -ErrorAction SilentlyContinue
         }
@@ -188,8 +188,14 @@ function Install-Zscaler {
     foreach ($key in $envVars.Keys) {
         $value = $envVars[$key]
         [System.Environment]::SetEnvironmentVariable($key, $value, [System.EnvironmentVariableTarget]::User)
-        $verboseMsg = "Set User Env Var: {0} = {1}" -f $key, $value
-        Write-Verbose $verboseMsg
+        if (-not $?) {
+            $errMsg = "Failed to set environment variable '{0}'" -f $key
+            Write-ErrorMsg $errMsg
+        } else {
+            $env:$key = $value
+            $verboseMsg = "Set User Env Var: {0} = {1}" -f $key, $value
+            Write-Verbose $verboseMsg
+        }
     }
     Write-Success "System environment variables have been set."
 
@@ -207,7 +213,6 @@ function Install-Zscaler {
     Write-Styled -Message "  NCS Environment Configuration Complete!" -ForegroundColor 'Cyan'
     Write-Styled -Message "===========================================================" -ForegroundColor 'Cyan'
     Write-Warning "IMPORTANT: You must close and re-open your PowerShell/CMD terminal for all changes to take full effect."
-
 }
 
 # --- Script Entrypoint ---
