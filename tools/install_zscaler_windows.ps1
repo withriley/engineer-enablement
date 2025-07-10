@@ -49,7 +49,7 @@ function Write-ErrorMsg {
 }
 
 # --- 1. Dependency Check & Installation ---
-function Check-Dependencies {
+function Get-Dependencies {
     Write-Styled -Message "Checking dependencies..." -ForegroundColor 'Cyan'
     if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
         Write-Warning "Package manager 'Scoop' not found."
@@ -97,7 +97,7 @@ function Check-Dependencies {
 }
 
 # --- Main Logic ---
-function Main {
+function Install-Zscaler {
     $CurrentVersion = "1.2.5"
     Write-Styled -Message "===========================================================" -ForegroundColor 'Cyan'
     Write-Styled -Message "  NCS Australia - Zscaler Setup for Windows (v$CurrentVersion)" -ForegroundColor 'Cyan'
@@ -121,6 +121,7 @@ function Main {
         $response = $request.GetResponse()
         if (-not $?) {
             Write-Verbose "✖ Connection failed on attempt $i."
+            Write-Verbose $response
             if ($i -lt $retries) { Start-Sleep -Seconds 1; continue } else { break }
         }
 
@@ -137,8 +138,8 @@ function Main {
         if ($issuer -like '*Zscaler*') {
             Write-Verbose "✔ Issuer is Zscaler. Success!"
             $success = $true
-            break
-        } else {
+        } 
+        else {
             Write-Verbose "✖ Certificate issuer is not Zscaler."
             Remove-Item $zscalerChainFile -ErrorAction SilentlyContinue
         }
@@ -206,9 +207,9 @@ function Main {
     Write-Styled -Message "  NCS Environment Configuration Complete!" -ForegroundColor 'Cyan'
     Write-Styled -Message "===========================================================" -ForegroundColor 'Cyan'
     Write-Warning "IMPORTANT: You must close and re-open your PowerShell/CMD terminal for all changes to take full effect."
+
 }
 
 # --- Script Entrypoint ---
-Check-Dependencies
-Main
-
+Get-Dependencies
+Install-Zscaler
