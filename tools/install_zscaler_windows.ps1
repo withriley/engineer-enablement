@@ -8,7 +8,7 @@
 
 .NOTES
     Author: Emile Hofsink
-    Version: 1.2.4
+    Version: 1.2.5
     Requires: Windows PowerShell 5.1+ or PowerShell 7+
     Run this script in an Administrator PowerShell session.
 
@@ -24,7 +24,7 @@ param (
 )
 
 # --- Script Setup ---
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'SilentlyContinue' # Allow manual error checking
 $global:VerbosePreference = if ($Verbose) { 'Continue' } else { 'SilentlyContinue' }
 
 # --- Helper Functions ---
@@ -59,17 +59,14 @@ function Check-Dependencies {
         Write-Warning "Package manager 'Scoop' not found."
         $choice = Read-Host "Would you like to install it now? (This is recommended) [y/N]"
         if ($choice -eq 'y') {
-            try {
-                Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
-                Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
-                Write-Success "Scoop installed successfully. Please close and re-open this Administrator PowerShell session, then re-run the script."
-                exit
-            } catch {
-                $exceptionMessage = $_.Exception.Message
-                $errMsg = "Scoop installation failed: {0}" -f $exceptionMessage
-                Write-ErrorMsg $errMsg
+            Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+            Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
+            if (-not $?) {
+                Write-ErrorMsg "Scoop installation failed. Please install it manually from https://scoop.sh and re-run this script."
                 exit
             }
+            Write-Success "Scoop installed successfully. Please close and re-open this Administrator PowerShell session, then re-run the script."
+            exit
         } else {
             Write-ErrorMsg "Scoop is required to automatically install other dependencies. Please install it and re-run."
             exit
@@ -85,13 +82,12 @@ function Check-Dependencies {
         $choice = Read-Host "Attempt to install them now using Scoop? [y/N]"
         if ($choice -eq 'y') {
             foreach ($dep in $missingDeps) {
-                try {
-                    scoop install $dep
-                    Write-Success "$dep installed."
-                } catch {
-                    $exceptionMessage = $_.Exception.Message
-                    $errMsg = "Failed to install '{0}': {1}" -f $dep, $exceptionMessage
+                scoop install $dep
+                if (-not $?) {
+                    $errMsg = "Failed to install '{0}'" -f $dep
                     Write-ErrorMsg $errMsg
+                } else {
+                    Write-Success "$dep installed."
                 }
             }
             Write-Success "Dependency installation complete. Please close and re-open this Administrator PowerShell session, then re-run the script."
@@ -106,7 +102,7 @@ function Check-Dependencies {
 
 # --- Main Logic ---
 function Main {
-    $CurrentVersion = "1.2.4"
+    $CurrentVersion = "1.2.5"
     Write-Styled -Message "===========================================================" -ForegroundColor 'Cyan'
     Write-Styled -Message "  NCS Australia - Zscaler Setup for Windows (v$CurrentVersion)" -ForegroundColor 'Cyan'
     Write-Styled -Message "===========================================================" -ForegroundColor 'Cyan'
@@ -123,33 +119,34 @@ function Main {
     $retries = 3
     for ($i = 1; $i -le $retries; $i++) {
         Write-Verbose "--- Attempt $i of $retries ---"
-        try {
-            $request = [System.Net.HttpWebRequest]::Create("https://google.com")
-            $request.ServerCertificateValidationCallback = { $true }
-            $response = $request.GetResponse()
-            $cert = $request.ServicePoint.Certificate
-            $chain = New-Object System.Security.Cryptography.X509Certificates.X509Chain
-            $chain.Build($cert)
-            $pemChain = ""
-            foreach ($element in $chain.ChainElements) {
-                $pemCert = "-----BEGIN CERTIFICATE-----`n" + [System.Convert]::ToBase64String($element.Certificate.Export('Cert'), 'InsertLineBreaks') + "`n-----END CERTIFICATE-----`n"
-                $pemChain += $pemCert
-            }
-            Set-Content -Path $zscalerChainFile -Value $pemChain -Encoding Ascii
-            $issuer = (openssl x509 -in $zscalerChainFile -noout -issuer).ToString()
-            if ($issuer -like '*Zscaler*') {
-                Write-Verbose "✔ Issuer is Zscaler. Success!"
-                $success = $true
-                break
-            } else {
-                Write-Verbose "✖ Certificate issuer is not Zscaler."
-                Remove-Item $zscalerChainFile -ErrorAction SilentlyContinue
-            }
-        } catch {
-            $exceptionMessage = $_.Exception.Message
-            $errMsg = "✖ Connection or certificate fetch failed on attempt {0}: {1}" -f $i, $exceptionMessage
-            Write-Verbose $errMsg
+        
+        $request = [System.Net.HttpWebRequest]::Create("https://google.com")
+        $request.ServerCertificateValidationCallback = { $true }
+        $response = $request.GetResponse()
+        if (-not $?) {
+            Write-Verbose "✖ Connection failed on attempt $i."
+            if ($i -lt $retries) { Start-Sleep -Seconds 1; continue } else { break }
         }
+
+        $cert = $request.ServicePoint.Certificate
+        $chain = New-Object System.Security.Cryptography.X509Certificates.X509Chain
+        $chain.Build($cert)
+        $pemChain = ""
+        foreach ($element in $chain.ChainElements) {
+            $pemCert = "-----BEGIN CERTIFICATE-----`n" + [System.Convert]::ToBase64String($element.Certificate.Export('Cert'), 'InsertLineBreaks') + "`n-----END CERTIFICATE-----`n"
+            $pemChain += $pemCert
+        }
+        Set-Content -Path $zscalerChainFile -Value $pemChain -Encoding Ascii
+        $issuer = (openssl x509 -in $zscalerChainFile -noout -issuer).ToString()
+        if ($issuer -like '*Zscaler*') {
+            Write-Verbose "✔ Issuer is Zscaler. Success!"
+            $success = $true
+            break
+        } else {
+            Write-Verbose "✖ Certificate issuer is not Zscaler."
+            Remove-Item $zscalerChainFile -ErrorAction SilentlyContinue
+        }
+        
         if ($i -lt $retries) { Start-Sleep -Seconds 1 }
     }
 
@@ -160,13 +157,11 @@ function Main {
     Write-Success "Zscaler chain discovered and saved to $zscalerChainFile"
 
     Write-Styled -Message "Installing Zscaler Root CA into Windows Trust Store..." -ForegroundColor 'Yellow'
-    try {
-        Import-Certificate -FilePath $zscalerChainFile -CertStoreLocation Cert:\CurrentUser\Root
+    Import-Certificate -FilePath $zscalerChainFile -CertStoreLocation Cert:\CurrentUser\Root
+    if ($?) {
         Write-Success "Zscaler Root CA successfully installed for the current user."
-    } catch {
-        $exceptionMessage = $_.Exception.Message
-        $errMsg = "Failed to install certificate to Windows Trust Store: {0}" -f $exceptionMessage
-        Write-ErrorMsg $errMsg
+    } else {
+        Write-ErrorMsg "Failed to install certificate to Windows Trust Store."
     }
 
     Write-Styled -Message "Creating the 'Golden Bundle'..." -ForegroundColor 'Yellow'
@@ -195,46 +190,22 @@ function Main {
     }
     foreach ($key in $envVars.Keys) {
         $value = $envVars[$key]
-        try {
-            # Set persistently for the User
-            [System.Environment]::SetEnvironmentVariable($key, $value, [System.EnvironmentVariableTarget]::User)
-            # Set for the current process
-            $env:$key = $value
-            $verboseMsg = "Set User Env Var: {0} = {1}" -f $key, $value
-            Write-Verbose $verboseMsg
-        } catch {
-            $exceptionMessage = $_.Exception.Message
-            $errMsg = "Failed to set environment variable '{0}': {1}" -f $key, $exceptionMessage
-            Write-ErrorMsg $errMsg
-        }
+        [System.Environment]::SetEnvironmentVariable($key, $value, [System.EnvironmentVariableTarget]::User)
+        $env:$key = $value
+        $verboseMsg = "Set User Env Var: {0} = {1}" -f $key, $value
+        Write-Verbose $verboseMsg
     }
     Write-Success "System environment variables have been set."
 
     Write-Styled -Message "Configuring Git, gcloud, and pip..." -ForegroundColor 'Yellow'
-    try {
-        git config --global http.sslcainfo $goldenBundleFile
-        Write-Success "Git config set."
-    } catch {
-        $exceptionMessage = $_.Exception.Message
-        $warningMsg = "Could not configure Git: {0}" -f $exceptionMessage
-        Write-Warning $warningMsg
-    }
-    try {
-        gcloud config set core/custom_ca_certs_file $goldenBundleFile
-        Write-Success "gcloud config set."
-    } catch {
-        $exceptionMessage = $_.Exception.Message
-        $warningMsg = "Could not configure gcloud: {0}" -f $exceptionMessage
-        Write-Warning $warningMsg
-    }
-    try {
-        pip config set global.cert $goldenBundleFile
-        Write-Success "pip config set."
-    } catch {
-        $exceptionMessage = $_.Exception.Message
-        $warningMsg = "Could not configure pip: {0}" -f $exceptionMessage
-        Write-Warning $warningMsg
-    }
+    git config --global http.sslcainfo $goldenBundleFile
+    if ($?) { Write-Success "Git config set." } else { Write-Warning "Could not configure Git." }
+    
+    gcloud config set core/custom_ca_certs_file $goldenBundleFile
+    if ($?) { Write-Success "gcloud config set." } else { Write-Warning "Could not configure gcloud." }
+
+    pip config set global.cert $goldenBundleFile
+    if ($?) { Write-Success "pip config set." } else { Write-Warning "Could not configure pip." }
 
     Write-Styled -Message "===========================================================" -ForegroundColor 'Cyan'
     Write-Styled -Message "  NCS Environment Configuration Complete!" -ForegroundColor 'Cyan'
