@@ -8,7 +8,7 @@
 
 .NOTES
     Author: Emile Hofsink
-    Version: 1.2.3
+    Version: 1.2.4
     Requires: Windows PowerShell 5.1+ or PowerShell 7+
     Run this script in an Administrator PowerShell session.
 
@@ -65,8 +65,9 @@ function Check-Dependencies {
                 Write-Success "Scoop installed successfully. Please close and re-open this Administrator PowerShell session, then re-run the script."
                 exit
             } catch {
-                $exception = $_
-                Write-ErrorMsg ("Scoop installation failed: {0}" -f $exception.Exception.Message)
+                $exceptionMessage = $_.Exception.Message
+                $errMsg = "Scoop installation failed: {0}" -f $exceptionMessage
+                Write-ErrorMsg $errMsg
                 exit
             }
         } else {
@@ -88,8 +89,9 @@ function Check-Dependencies {
                     scoop install $dep
                     Write-Success "$dep installed."
                 } catch {
-                    $exception = $_
-                    Write-ErrorMsg ("Failed to install '{0}': {1}" -f $dep, $exception.Exception.Message)
+                    $exceptionMessage = $_.Exception.Message
+                    $errMsg = "Failed to install '{0}': {1}" -f $dep, $exceptionMessage
+                    Write-ErrorMsg $errMsg
                 }
             }
             Write-Success "Dependency installation complete. Please close and re-open this Administrator PowerShell session, then re-run the script."
@@ -104,7 +106,7 @@ function Check-Dependencies {
 
 # --- Main Logic ---
 function Main {
-    $CurrentVersion = "1.2.3"
+    $CurrentVersion = "1.2.4"
     Write-Styled -Message "===========================================================" -ForegroundColor 'Cyan'
     Write-Styled -Message "  NCS Australia - Zscaler Setup for Windows (v$CurrentVersion)" -ForegroundColor 'Cyan'
     Write-Styled -Message "===========================================================" -ForegroundColor 'Cyan'
@@ -144,8 +146,9 @@ function Main {
                 Remove-Item $zscalerChainFile -ErrorAction SilentlyContinue
             }
         } catch {
-            $exception = $_
-            Write-Verbose ("✖ Connection or certificate fetch failed on attempt {0}: {1}" -f $i, $exception.Exception.Message)
+            $exceptionMessage = $_.Exception.Message
+            $errMsg = "✖ Connection or certificate fetch failed on attempt {0}: {1}" -f $i, $exceptionMessage
+            Write-Verbose $errMsg
         }
         if ($i -lt $retries) { Start-Sleep -Seconds 1 }
     }
@@ -161,8 +164,9 @@ function Main {
         Import-Certificate -FilePath $zscalerChainFile -CertStoreLocation Cert:\CurrentUser\Root
         Write-Success "Zscaler Root CA successfully installed for the current user."
     } catch {
-        $exception = $_
-        Write-ErrorMsg ("Failed to install certificate to Windows Trust Store: {0}" -f $exception.Exception.Message)
+        $exceptionMessage = $_.Exception.Message
+        $errMsg = "Failed to install certificate to Windows Trust Store: {0}" -f $exceptionMessage
+        Write-ErrorMsg $errMsg
     }
 
     Write-Styled -Message "Creating the 'Golden Bundle'..." -ForegroundColor 'Yellow'
@@ -194,12 +198,14 @@ function Main {
         try {
             # Set persistently for the User
             [System.Environment]::SetEnvironmentVariable($key, $value, [System.EnvironmentVariableTarget]::User)
-            # Set for the current process using the robust Set-Item cmdlet
-            Set-Item -Path "Env:\$key" -Value $value
-            Write-Verbose ("Set User Env Var: {0} = {1}" -f $key, $value)
+            # Set for the current process
+            $env:$key = $value
+            $verboseMsg = "Set User Env Var: {0} = {1}" -f $key, $value
+            Write-Verbose $verboseMsg
         } catch {
-            $exception = $_
-            Write-ErrorMsg ("Failed to set environment variable '{0}': {1}" -f $key, $exception.Exception.Message)
+            $exceptionMessage = $_.Exception.Message
+            $errMsg = "Failed to set environment variable '{0}': {1}" -f $key, $exceptionMessage
+            Write-ErrorMsg $errMsg
         }
     }
     Write-Success "System environment variables have been set."
@@ -209,22 +215,25 @@ function Main {
         git config --global http.sslcainfo $goldenBundleFile
         Write-Success "Git config set."
     } catch {
-        $exception = $_
-        Write-Warning ("Could not configure Git: {0}" -f $exception.Exception.Message)
+        $exceptionMessage = $_.Exception.Message
+        $warningMsg = "Could not configure Git: {0}" -f $exceptionMessage
+        Write-Warning $warningMsg
     }
     try {
         gcloud config set core/custom_ca_certs_file $goldenBundleFile
         Write-Success "gcloud config set."
     } catch {
-        $exception = $_
-        Write-Warning ("Could not configure gcloud: {0}" -f $exception.Exception.Message)
+        $exceptionMessage = $_.Exception.Message
+        $warningMsg = "Could not configure gcloud: {0}" -f $exceptionMessage
+        Write-Warning $warningMsg
     }
     try {
         pip config set global.cert $goldenBundleFile
         Write-Success "pip config set."
     } catch {
-        $exception = $_
-        Write-Warning ("Could not configure pip: {0}" -f $exception.Exception.Message)
+        $exceptionMessage = $_.Exception.Message
+        $warningMsg = "Could not configure pip: {0}" -f $exceptionMessage
+        Write-Warning $warningMsg
     }
 
     Write-Styled -Message "===========================================================" -ForegroundColor 'Cyan'
@@ -234,6 +243,5 @@ function Main {
 }
 
 # --- Script Entrypoint ---
-# Self-update removed to prevent parsing issues on first run. Use the one-liner to get the latest version.
 Check-Dependencies
 Main
