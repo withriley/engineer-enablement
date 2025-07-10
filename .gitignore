@@ -30,3 +30,47 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+# OS-specific files
+.DS_Store
+Thumbs.db
+.AppleDouble
+.LSOverride
+
+# Editor and IDE directories
+.vscode/
+.idea/
+*.swp
+*~
+*.sublime-project
+*.sublime-workspace
+
+# Local environment files
+# Never commit secrets!
+.env
+.env.local
+.env.*.local
+*.local
+
+# Temporary files from one-liner installations
+# These are downloaded to /tmp, but in case they are run from the repo root
+/install_mise.sh
+/zscaler.sh
+/install_zscaler_windows.ps1
+
+# Build and dependency directories
+/node_modules
+/vendor
+/dist
+/build
+
+# Log files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Other
+.terraform/
+*.tfstate
+*.tfstate.backup
+

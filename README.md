@@ -1,12 +1,18 @@
-# Engineer Enablement @ NCS Australia
+<img src="./assets/title.png" alt="overview" width="600"/>
 
-This repository contains a collection of scripts and tools designed to accelerate and standardise development environments for engineers at NCS Australia. The goal is to automate common setup tasks, eliminate friction, and ensure a consistent, high-quality experience for everyone.
+This repository contains a collection of scripts and tools designed to accelerate and standardise development environments for engineers at NCS Australia.
+
+The goal is to automate common setup tasks, eliminate friction, and ensure a consistent, high-quality experience for everyone.
 
 ---
 
-## 🚀 Available Tools
+<img src="./assets/tools.png" alt="overview" width="400"/>
 
-### 🛡️ Zscaler Certificate Fixer
+Here's the list of tools and scripts available in this repository:
+
+<img src="./assets/freeze.png" alt="overview" width="400"/>
+
+### :zap: Zscaler Certificate Fixer
 
 This tool automatically configures your development environment to work seamlessly behind the NCS Zscaler proxy. It fetches the required Zscaler CA certificates, creates a unified trust store, and configures all major tools (`git`, `gcloud`, `pip`, `npm`, `curl`, etc.) to use it.
 
@@ -30,7 +36,7 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; $scriptPath = Join-Path $env:T
 
 ---
 
-### 📦 Mise Environment Setup
+### :sparkles: Mise Environment Setup
 
 This script automates the complete installation and configuration of `mise`, our standard tool for managing different versions of command-line tools like `terraform`, `go`, `node`, `python`, and more.
 
@@ -46,20 +52,22 @@ curl -sSL "[https://raw.githubusercontent.com/withriley/engineer-enablement/main
 
 ---
 
-## 🤝 Contributing
+<img src="./assets/resources.png" alt="overview" width="400"/>
+
+### 🤝 Contributing
 
 Contributions are welcome! If you have an idea for a new script or an improvement to an existing one, please follow these steps:
 
-1.  **Fork** the repository.
-2.  Create a new **feature branch** (`git checkout -b feature/your-new-feature`).
-3.  Commit your changes (`git commit -am 'Add some feature'`).
-4.  Push to the branch (`git push origin feature/your-new-feature`).
-5.  Create a new **Pull Request**.
+1. **Fork** the repository.
+2. Create a new **feature branch** (`git checkout -b feature/your-new-feature`).
+3. Commit your changes (`git commit -am 'Add some feature'`).
+4. Push to the branch (`git push origin feature/your-new-feature`).
+5. Create a new **Pull Request**.
 
 Please ensure that any new scripts follow the established standards for user experience, dependency management, and robustness.
 
 ---
 
-## 📄 License
+### :books: License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
