@@ -17,7 +17,7 @@
 
 .NOTES
     Author: Emile Hofsink
-    Version: 1.0.0
+    Version: 1.0.1
     Requires: Windows PowerShell 5.1+ or PowerShell 7+
     Run this script in an Administrator PowerShell session.
 
@@ -168,7 +168,8 @@ function Main {
                 Remove-Item $zscalerChainFile -ErrorAction SilentlyContinue
             }
         } catch {
-            Write-Verbose "✖ Connection or certificate fetch failed on attempt $i: $($_.Exception.Message)"
+            $errMsg = $_.Exception.Message
+            Write-Verbose "✖ Connection or certificate fetch failed on attempt $i: $errMsg"
         }
         if ($i -lt $retries) { Start-Sleep -Seconds 1 }
     }
@@ -219,8 +220,8 @@ function Main {
     foreach ($key in $envVars.Keys) {
         $value = $envVars[$key]
         try {
-            # Set for the current process
-            $env:$key = $value
+            # Set for the current process using the robust Set-Item cmdlet
+            Set-Item -Path "Env:\$key" -Value $value
             # Set persistently for the User
             [System.Environment]::SetEnvironmentVariable($key, $value, [System.EnvironmentVariableTarget]::User)
             Write-Verbose "Set User Env Var: $key = $value"
