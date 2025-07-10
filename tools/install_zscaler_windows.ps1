@@ -6,18 +6,9 @@
     to work seamlessly behind the NCS Zscaler proxy. It automatically
     discovers and fetches the required Zscaler CA certificates.
 
-    It performs the following actions:
-    1.  Checks for dependencies (Scoop, Git, OpenSSL) and offers to install them.
-    2.  Auto-discovers the Zscaler certificate chain with retries.
-    3.  Validates that the fetched certificate is issued by Zscaler.
-    4.  Creates a 'golden bundle' by combining system certs and the discovered Zscaler chain.
-    5.  Installs the Zscaler Root CA into the Windows Trusted Root Certification Authorities store.
-    6.  Idempotently sets system-wide environment variables for maximum tool compatibility.
-    7.  Sets tool-specific configurations for Git, gcloud, and pip.
-
 .NOTES
     Author: Emile Hofsink
-    Version: 1.0.1
+    Version: 1.1.0
     Requires: Windows PowerShell 5.1+ or PowerShell 7+
     Run this script in an Administrator PowerShell session.
 
@@ -31,6 +22,42 @@
 param (
     [Switch]$Verbose
 )
+
+# --- Self-Update Mechanism ---
+$ScriptUrl = "https://raw.githubusercontent.com/withriley/engineer-enablement/main/tools/install_zscaler_windows.ps1"
+$CurrentVersion = "1.1.0" # This must match the version in this header
+
+function Self-Update {
+    Write-Host "Checking for script updates..."
+    try {
+        # The timestamp is a cache-busting mechanism.
+        $latestScriptContent = Invoke-RestMethod -Uri "$ScriptUrl`?_=$(Get-Date -UFormat %s)"
+        $latestVersion = ($latestScriptContent | Select-String -Pattern "Version:").Line.Split(' ')[-1]
+
+        if ($null -eq $latestVersion) {
+            Write-Warning "Could not determine latest version. Proceeding with current version."
+            return
+        }
+
+        if ($latestVersion -ne $CurrentVersion) {
+            Write-Host "A new version ($latestVersion) is available. The script will now update and re-launch." -ForegroundColor Yellow
+            
+            # This script's own path and name
+            $scriptPath = $MyInvocation.MyCommand.Path
+            
+            # Download the new script over the old one
+            Invoke-RestMethod -Uri "$ScriptUrl`?_=$(Get-Date -UFormat %s)" -OutFile $scriptPath
+            
+            Write-Host "Update complete. Re-executing the script..." -ForegroundColor Green
+            # Re-execute the new script with the same arguments
+            & $scriptPath @PSBoundParameters
+            exit
+        }
+    } catch {
+        Write-Warning "Could not check for script updates: $($_.Exception.Message). Proceeding with current version."
+    }
+}
+
 
 # --- Script Setup ---
 $ErrorActionPreference = 'Stop'
@@ -121,7 +148,7 @@ function Check-Dependencies {
 # --- Main Logic ---
 function Main {
     Write-Styled -Message "===========================================================" -ForegroundColor 'Cyan'
-    Write-Styled -Message "  NCS Australia - Zscaler Environment Setup for Windows" -ForegroundColor 'Cyan'
+    Write-Styled -Message "  NCS Australia - Zscaler Environment Setup for Windows (v$CurrentVersion)" -ForegroundColor 'Cyan'
     Write-Styled -Message "===========================================================" -ForegroundColor 'Cyan'
     
     $certsDir = "$HOME\certs"
@@ -258,5 +285,6 @@ function Main {
 }
 
 # --- Script Entrypoint ---
+Self-Update @PSBoundParameters
 Check-Dependencies
 Main
