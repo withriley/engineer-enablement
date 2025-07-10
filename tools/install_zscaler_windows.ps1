@@ -70,7 +70,8 @@ function Self-Update {
             & $scriptPath @PSBoundParameters
             exit
         }
-    } catch {
+    } 
+    catch {
         $exception = $_
         Write-Warning "Could not check for script updates: $($exception.Exception.Message). Proceeding with current version."
     }
@@ -174,7 +175,8 @@ function Main {
     try {
         Import-Certificate -FilePath $zscalerChainFile -CertStoreLocation Cert:\CurrentUser\Root
         Write-Success "Zscaler Root CA successfully installed for the current user."
-    } catch { Write-ErrorMsg "Failed to install certificate to Windows Trust Store. Please ensure you are running as Administrator." }
+    } 
+    catch { Write-ErrorMsg "Failed to install certificate to Windows Trust Store. Please ensure you are running as Administrator." }
 
     Write-Styled -Message "Creating the 'Golden Bundle'..." -ForegroundColor 'Yellow'
     $certifiPath = (python -m certifi)
@@ -196,7 +198,8 @@ function Main {
             [System.Environment]::SetEnvironmentVariable($key, $value, [System.EnvironmentVariableTarget]::User)
             $env:$key = $value # Set for current session
             Write-Verbose "Set User Env Var: $key = $value"
-        } catch { Write-ErrorMsg "Failed to set environment variable '$key'. Please ensure you are running as Administrator." }
+        } 
+        catch { Write-ErrorMsg "Failed to set environment variable '$key'. Please ensure you are running as Administrator." }
     }
     Write-Success "System environment variables have been set."
 
