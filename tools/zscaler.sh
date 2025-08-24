@@ -145,9 +145,9 @@ main() {
             if [ "$verbose" = true ]; then
                 gum style --bold "--- Attempt $i of $retries ---"
                 gum style --bold "Running: LC_ALL=C echo | openssl s_client -showcerts -connect google.com:443"
-                openssl_output=$(LC_ALL=C echo | openssl s_client -showcerts -connect google.com:443 2>&1)
+                openssl_output=$(LC_ALL=C echo "Q" | openssl s_client -showcerts -connect google.com:443 2>&1)
             else
-                openssl_output=$(LC_ALL=C echo | openssl s_client -showcerts -connect google.com:443 2>/dev/null)
+                openssl_output=$(LC_ALL=C echo "Q" | openssl s_client -showcerts -connect google.com:443 2>/dev/null)
             fi
             
             echo "$openssl_output" | awk '/-----BEGIN CERTIFICATE-----/{p=1}; p; /-----END CERTIFICATE-----/{p=0}' > "$ZSCALER_CHAIN_FILE"
