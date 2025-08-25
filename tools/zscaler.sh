@@ -26,7 +26,7 @@
 #   curl -sSL "https://raw.githubusercontent.com/withriley/engineer-enablement/main/tools/zscaler.sh?_=$(date +%s)" -o /tmp/zscaler.sh && zsh /tmp/zscaler.sh
 #
 
-# --- Self-Update Mechanism ---
+#  Self-Update Mechanism 
 SCRIPT_URL="https://raw.githubusercontent.com/withriley/engineer-enablement/main/tools/zscaler.sh"
 CURRENT_VERSION="2.6.4" # This must match the version in this header
 
@@ -59,16 +59,16 @@ self_update() {
     fi
 }
 
-# --- Global Helper function ---
+#  Global Helper function 
 print_error() {
     if command -v gum &> /dev/null; then gum style --foreground 9 "✖ Error: $1"; else echo "✖ Error: $1"; fi
 }
 
-# --- 1. Dependency Check ---
+#  1. Dependency Check 
 check_dependencies() {
     # Check for gum first, as it's needed for the UI.
     if ! command -v gum &> /dev/null; then
-        echo "--- Dependency Check ---"
+        echo " Dependency Check "
         echo "This script uses 'gum' for a better user experience, but it's not installed."
         printf "Would you like to attempt to install it via Homebrew (macOS) or Go? [y/N] "
         read -r response < /dev/tty
@@ -96,7 +96,7 @@ check_dependencies() {
 }
 
 
-# --- Main Logic ---
+#  Main Logic 
 main() {
     # Parse command-line arguments
     local output_file=""
@@ -143,7 +143,7 @@ main() {
         for i in $(seq 1 $retries); do
             local openssl_output
             if [ "$verbose" = true ]; then
-                gum style --bold "--- Attempt $i of $retries ---"
+                gum style --bold " Attempt $i of $retries "
                 gum style --bold "Running: LC_ALL=C echo | openssl s_client -showcerts -connect google.com:443"
                 openssl_output=$(LC_ALL=C echo "Q" | openssl s_client -showcerts -connect google.com:443 2>&1)
             else
@@ -153,9 +153,9 @@ main() {
             echo "$openssl_output" | awk '/-----BEGIN CERTIFICATE-----/{p=1}; p; /-----END CERTIFICATE-----/{p=0}' > "$ZSCALER_CHAIN_FILE"
 
             if [ "$verbose" = true ]; then
-                gum style --bold --padding "1 0" "--- OpenSSL Raw Output (Attempt $i) ---"
+                gum style --bold --padding "1 0" " OpenSSL Raw Output (Attempt $i) "
                 echo "$openssl_output"
-                gum style --bold "--- End of Raw Output ---"
+                gum style --bold " End of Raw Output "
                 gum style "Checking if certificate file was created and is not empty..."
             fi
 
@@ -172,8 +172,8 @@ main() {
                         if [ "$verbose" = true ]; then gum style "✔ Issuer is Zscaler. Success!"; fi
                         return 0
                     else
-                        if [ "$verbose" = true ]; then print_error "Certificate issuer is not Zscaler."; fi
-                        > "$ZSCALER_CHAIN_FILE"
+                        print_error "Certificate issuer is not Zscaler."
+                        exit 1
                     fi
                 fi
             elif [ "$verbose" = true ]; then
@@ -202,7 +202,7 @@ main() {
     gum spin --spinner dot --title "Creating the 'Golden Bundle'..." -- cat "$CERTIFI_PATH" "$ZSCALER_CHAIN_FILE" > "$GOLDEN_BUNDLE_FILE"
     gum style "✔ Golden Bundle created at $(gum style --foreground '#00B4D8' "$GOLDEN_BUNDLE_FILE")"
 
-    local ZSCALER_MARKER="# --- Zscaler & NCS Certificate Configuration (added by zscaler.sh) ---"
+    local ZSCALER_MARKER="#  Zscaler & NCS Certificate Configuration (added by zscaler.sh) "
     local ENV_CONFIG_BLOCK=""
     # ... (env block generation logic) ...
     if [ "$SHELL_TYPE" = "fish" ]; then
@@ -284,7 +284,7 @@ EOF
     gum style "$FINAL_MESSAGE" --border double --padding "1 2" --margin "1" --border-foreground "#0077B6"
 }
 
-# --- Script Entrypoint ---
+#  Script Entrypoint 
 self_update "$@"
 check_dependencies
 main "$@"
