@@ -243,6 +243,7 @@ EOF
     local activation_cmd
     local parent_shell
     parent_shell=$(ps -p $$ -o comm=)
+    parent_shell=$(basename "$parent_shell")
 
     if [[ "$parent_shell" == "zsh" ]]; then
         shell_type="zsh"; shell_profile="$HOME/.zshrc"; activation_cmd='eval "$(mise activate zsh)"'

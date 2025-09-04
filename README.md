@@ -47,7 +47,7 @@ This script automates the complete installation and configuration of `mise`, our
 Run the following command in your terminal (`zsh` or `bash`):
 
 ```bash
-curl -sSL "[https://raw.githubusercontent.com/withriley/engineer-enablement/main/tools/install_mise.sh?_=$(date](https://raw.githubusercontent.com/withriley/engineer-enablement/main/tools/install_mise.sh?_=$(date) +%s)" -o /tmp/install_mise.sh && zsh /tmp/install_mise.sh
+curl -sSL "https://raw.githubusercontent.com/withriley/engineer-enablement/main/tools/install_mise.sh?_=$(date +%s)" -o /tmp/install_mise.sh && zsh /tmp/install_mise.sh
 ```
 
 ---
