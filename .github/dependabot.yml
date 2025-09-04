@@ -1,0 +1,24 @@
+version: 2
+updates:
+  # Enable Dependabot for GitHub Actions
+  - package-ecosystem: "github-actions"
+    # Look for workflow files in the root of the repository
+    directory: "/"
+    # Check for updates weekly
+    schedule:
+      interval: "weekly"
+    # Add labels to pull requests for easy identification
+    labels:
+      - "dependencies"
+      - "github-actions"
+    # Assign the pull requests to the repository owner
+    assignees:
+      - "emilehofsink"
+    # Group minor and patch updates together to reduce PR noise
+    groups:
+      github-actions-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
