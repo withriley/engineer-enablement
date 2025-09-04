@@ -198,7 +198,20 @@ main() {
     gum style "✔ Zscaler chain discovered and saved to $(gum style --foreground '#00B4D8' "$ZSCALER_CHAIN_FILE")"
 
     CERTIFI_PATH=$(python3 -m certifi 2>/dev/null)
-    if [ -z "$CERTIFI_PATH" ]; then print_error "Could not find 'certifi' package."; exit 1; fi
+    if [ -z "$CERTIFI_PATH" ]; then
+        gum style --foreground 9 "✖ 'certifi' Python package not found."
+        if gum confirm "Would you like to install 'certifi' now using pip?"; then
+            pip3 install certifi && CERTIFI_PATH=$(python3 -m certifi 2>/dev/null)
+            if [ -z "$CERTIFI_PATH" ]; then
+                print_error "'certifi' installation failed. Please install it manually with 'pip3 install certifi'."
+                exit 1
+            fi
+            gum style --foreground 10 "✔ 'certifi' installed successfully."
+        else
+            print_error "'certifi' is required. Please install it with 'pip3 install certifi' and re-run the script."
+            exit 1
+        fi
+    fi
     gum spin --spinner dot --title "Creating the 'Golden Bundle'..." -- cat "$CERTIFI_PATH" "$ZSCALER_CHAIN_FILE" > "$GOLDEN_BUNDLE_FILE"
     gum style "✔ Golden Bundle created at $(gum style --foreground '#00B4D8' "$GOLDEN_BUNDLE_FILE")"
 
