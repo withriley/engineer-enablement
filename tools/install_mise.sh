@@ -189,28 +189,11 @@ zoxide = "latest"
 fzf = "latest"
 fd = "latest"
 ripgrep = "latest"
-"go:github.com/GoogleCloudPlatform/cloud-sql-proxy/v2" = { version = "latest" }
-"go:github.com/air-verse/air" = { version = "latest" }
-"go:github.com/swaggo/swag/cmd/swag" = { version = "latest" }
-"go:github.com/sqlc-dev/sqlc/cmd/sqlc" = { version = "latest" }
 "go:github.com/charmbracelet/freeze" = { version = "latest" }
 "go:github.com/charmbracelet/vhs" = { version = "latest" }
 "npm:@dataform/cli" = "latest"
 "npm:@google/gemini-cli" = "latest"
-"npm:opencode-ai" = "latest"
-"pipx:sqlfluff/sqlfluff" = "latest"
 "cargo:tuckr" = "latest"
-[tasks.bundle-update]
-description = "Runs Update, Upgrade, Cleanup and Autoremove for Brew"
-run = "brew update && brew upgrade && brew cleanup && brew autoremove"
-[tasks.set-gcp-project]
-description = "Sets the active Google Cloud project and ADC quota project."
-usage = 'arg "<project_id>" "The Google Cloud Project ID to set."'
-run = "gcloud config set project {{arg(name='project_id')}} && gcloud auth application-default set-quota-project {{arg(name='project_id')}}"
-[tasks.banish-ds-store]
-description = "Removes .DS_Store files from a Git repository."
-dir = "{{cwd}}"
-run = "find . -name .DS_Store -print0 | xargs -0 git rm -f --ignore-unmatch && echo .DS_Store >> .gitignore && git add .gitignore && git commit -m ':fire: .DS_Store banished!' && git push"
 EOF
     gum style "✔ Created $(gum style --foreground '#00B4D8' "$MISE_CONFIG_TOML")"
 
