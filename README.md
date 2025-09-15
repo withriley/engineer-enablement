@@ -23,7 +23,7 @@ This solves the common "certificate validation" and "untrusted SSL certificate" 
 Run the following command in your terminal (`zsh` or `bash`):
 
 ```bash
-curl -sSL "[https://raw.githubusercontent.com/withriley/engineer-enablement/main/tools/zscaler.sh?_=$(date](https://raw.githubusercontent.com/withriley/engineer-enablement/main/tools/zscaler.sh?_=$(date) +%s)" -o /tmp/zscaler.sh && zsh /tmp/zscaler.sh
+curl -sSL https://raw.githubusercontent.com/withriley/engineer-enablement/main/tools/zscaler.sh -o /tmp/zscaler.sh && zsh /tmp/zscaler.sh
 ```
 
 #### **Installation (Windows)**
