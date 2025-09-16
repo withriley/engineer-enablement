@@ -1,0 +1,85 @@
+apiVersion: skaffold/v4beta13
+kind: Config
+
+build:
+  # https://skaffold.dev/docs/builders/build-environments/cloud-build/
+  googleCloudBuild:
+    projectId: riley-genai-demo
+
+  platforms: ["linux/amd64"]
+
+  artifacts:
+    - image: australia-southeast1-docker.pkg.dev/riley-genai-demo/genai/nginx
+      docker:
+        dockerfile: ./Dockerfile
+
+manifests:
+  rawYaml:
+    - resources/tmp/current_output.yaml
+  hooks:
+    before:
+      - host:
+          command: ["sh", "-c", "PROJECT_ID=riley-genai-demo REGION=australia-southeast1 SERVICE_NAME=nginx-dev ./resources/collect.sh dev"]
+          os: ["darwin", "linux"]
+
+deploy:
+  # https://skaffold.dev/docs/deployers/cloudrun/
+  cloudrun:
+    projectid: riley-genai-demo
+    region: australia-southeast1
+
+profiles:
+  - name: local
+    build:
+      local:
+        push: true
+
+      platforms: ["linux/amd64"]
+
+      artifacts:
+        - image: australia-southeast1-docker.pkg.dev/riley-genai-demo/genai/nginx
+          docker:
+            dockerfile: ./Dockerfile
+
+    activation:
+      - command: dev
+
+    manifests:
+      rawYaml:
+        - resources/tmp/current_output.yaml
+      hooks:
+        before:
+          - host:
+              command: ["sh", "-c", "PROJECT_ID=riley-genai-demo REGION=australia-southeast1 SERVICE_NAME=nginx-testing ./resources/collect.sh dev"]
+              os: ["darwin", "linux"]
+
+    deploy:
+      cloudrun:
+        projectid: riley-genai-demo
+        region: australia-southeast1
+        
+  - name: prod
+    build:
+      googleCloudBuild:
+        projectId: riley-genai-demo
+
+      platforms: ["linux/amd64"]
+
+      artifacts:
+        - image: australia-southeast1-docker.pkg.dev/riley-genai-demo/genai/nginx
+          docker:
+            dockerfile: ./Dockerfile
+
+    manifests:
+      rawYaml:
+        - resources/tmp/current_output.yaml
+      hooks:
+        before:
+          - host:
+              command: ["sh", "-c", "PROJECT_ID=riley-genai-demo REGION=australia-southeast1 SERVICE_NAME=nginx ./resources/collect.sh prod"]
+              os: ["darwin", "linux"]
+
+    deploy:
+      cloudrun:
+        projectid: riley-genai-demo
+        region: australia-southeast1

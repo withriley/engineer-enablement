@@ -1,0 +1,20 @@
+# https://cloud.google.com/run/docs/reference/yaml/v1
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  annotations:
+    run.googleapis.com/ingress: internal-and-cloud-load-balancing
+    run.googleapis.com/ingress-status: internal-and-cloud-load-balancing
+    run.googleapis.com/threat-detection: 'true'
+  name: nginx-dev
+spec:
+  template:
+    spec:
+      containers:
+        - image: australia-southeast1-docker.pkg.dev/riley-genai-demo/genai/nginx
+          ports:
+            - containerPort: 80
+              name: http1
+          env:
+            - name: ENV
+              value: development
