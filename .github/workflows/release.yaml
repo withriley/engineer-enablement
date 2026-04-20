@@ -127,7 +127,7 @@ jobs:
           git push -f --tags
 
       - name: Download artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: release-notes
 
