@@ -31,7 +31,7 @@ curl -sSL https://raw.githubusercontent.com/withriley/engineer-enablement/main/t
 Run the following command in an **Administrator PowerShell** session:
 
 ```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; $scriptPath = Join-Path $env:TEMP "install_zscaler_windows.ps1"; Invoke-RestMethod -Uri "[https://raw.githubusercontent.com/withriley/engineer-enablement/main/tools/install_zscaler_windows.ps1?_=$(Get-Date](https://raw.githubusercontent.com/withriley/engineer-enablement/main/tools/install_zscaler_windows.ps1?_=$(Get-Date) -UFormat %s)" -OutFile $scriptPath; & $scriptPath
+Set-ExecutionPolicy Bypass -Scope Process -Force; $scriptPath = Join-Path $env:TEMP "install_zscaler_windows.ps1"; Invoke-RestMethod -Uri "https://raw.githubusercontent.com/withriley/engineer-enablement/main/tools/install_zscaler_windows.ps1?_=$(Get-Date -UFormat %s)" -OutFile $scriptPath; & $scriptPath
 ```
 
 ---
